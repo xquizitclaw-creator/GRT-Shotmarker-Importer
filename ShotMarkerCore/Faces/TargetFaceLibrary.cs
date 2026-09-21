@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Linq;
 using System.Reflection;
 using System.Text.Json;
 
@@ -17,6 +18,27 @@ public static class TargetFaceLibrary
 
     public static TargetFace? Find(string faceId) =>
         Faces.TryGetValue(faceId, out var f) ? f : null;
+
+    /// <summary>Matches a face by its display <c>Name</c> or <c>ShortName</c> — what a
+    /// source that names faces in prose rather than by id (e.g. the ShotMarker CSV export,
+    /// "NRA Long Range FC") has to go on. Exact match (either field, case-insensitive)
+    /// first, then either string containing the other, so "NRA Long Range FC" still finds
+    /// a face whose recorded name has extra punctuation or a parenthetical. Returns null
+    /// when nothing matches; callers fall back to <see cref="Generic"/>.</summary>
+    public static TargetFace? FindByName(string displayName)
+    {
+        string needle = displayName?.Trim() ?? "";
+        if (needle.Length == 0) return null;
+
+        TargetFace? exact = Faces.Values.FirstOrDefault(f =>
+            string.Equals(f.Name, needle, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(f.ShortName, needle, StringComparison.OrdinalIgnoreCase));
+        if (exact != null) return exact;
+
+        return Faces.Values.FirstOrDefault(f =>
+            f.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
+            needle.Contains(f.Name, StringComparison.OrdinalIgnoreCase));
+    }
 
     /// <summary>A blank board of the given size: shots, centre cross and scale bar only.
     /// What an unrecognised face_id renders as, so an unknown target never aborts an import.</summary>

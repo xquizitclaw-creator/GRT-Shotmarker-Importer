@@ -68,24 +68,92 @@ public class SmCsvReaderTests
     }
 
     [Fact]
-    public void ReadsAllSixStringsAndAssignsSequentialShotNumbers()
+    public void ReadsAllNineStringsAndAssignsSequentialShotNumbers()
     {
         var strings = Read(out var log);
-        Assert.Equal(6, strings.Count);
-        Assert.Equal(new[] { "M6 R1 TT11", "M5 R1 TT11", "M4 R1 TT11",
-                              "M3 R2 TT11", "M2 R2 TT11", "M1 R2 TT11" },
-                     strings.Select(s => s.Name));
 
-        // Six strings, one per block — a multi-target block's two targets share one
-        // SmString rather than becoming two, so Number is unique per string with no
-        // extra bookkeeping. Shot counts verified against the fixture directly (awk).
-        Assert.Equal(new[] { 33, 34, 30, 22, 22, 25 }, strings.Select(s => s.Shots.Count));
+        // Six blocks in the file, but three of them (M6/M5/M4 R1 TT11) interleave two
+        // rifles' shots — one SmString per target, so 3 single-target + 3*2 = 9 strings.
+        // The unprefixed target keeps the block's own name and is emitted first; the
+        // "R"-prefixed target is emitted second, named with a "[R]" suffix. Shot counts
+        // and names verified against the fixture directly (python, grouping by id prefix).
+        Assert.Equal(9, strings.Count);
+        Assert.Equal(new[]
+        {
+            "M6 R1 TT11", "M6 R1 TT11 [R]",
+            "M5 R1 TT11", "M5 R1 TT11 [R]",
+            "M4 R1 TT11", "M4 R1 TT11 [R]",
+            "M3 R2 TT11", "M2 R2 TT11", "M1 R2 TT11",
+        }, strings.Select(s => s.Name));
+
+        Assert.Equal(new[] { 16, 17, 17, 17, 15, 15, 22, 22, 25 }, strings.Select(s => s.Shots.Count));
+
+        // Number restarts at 1 within each emitted string (sighters included), same
+        // convention as the .tar reader — trivially true here since each target has its
+        // own shot list, but confirmed rather than assumed.
         foreach (var s in strings)
             Assert.Equal(Enumerable.Range(1, s.Shots.Count), s.Shots.Select(sh => sh.Number));
 
-        // All six strings share the one face on this device; it must resolve to the
+        // Ids stay unique across the whole file, not just within a block.
+        Assert.Equal(strings.Select(s => s.Id).Distinct().Count(), strings.Count);
+
+        // All nine strings share the one face on this device; it must resolve to the
         // library's id, not stay empty (which would mean the name match failed).
         Assert.All(strings, s => Assert.Equal("NRA_LRFC", s.FaceId));
+    }
+
+    [Fact]
+    public void MultiTargetScoreColumnsAreAssignedToTheCorrectTarget()
+    {
+        // Guard against the R/unprefixed score columns being swapped: for each of the
+        // three multi-target blocks, sum the emitted shots' own scores (non-sighter shots
+        // only, X = 10 and counted, matching how ShotMarker's own declared composite score
+        // is computed) and check it equals the ScoreText this reader assigned to that
+        // target. If the reader mapped a group to the wrong header column, the group's own
+        // shots would sum to the OTHER declared value, so this fails exactly when the
+        // columns are swapped. Expected values below are the coordinator-verified table.
+        var expected = new Dictionary<string, string>
+        {
+            ["M6 R1 TT11"] = "142-4X",
+            ["M6 R1 TT11 [R]"] = "134-3X",
+            ["M5 R1 TT11"] = "137-2X",
+            ["M5 R1 TT11 [R]"] = "129-2X",
+            ["M4 R1 TT11"] = "137-1X",
+            ["M4 R1 TT11 [R]"] = "133-1X",
+        };
+
+        var strings = Read(out _).Where(s => expected.ContainsKey(s.Name)).ToList();
+        Assert.Equal(expected.Count, strings.Count);
+
+        foreach (var s in strings)
+        {
+            string computed = SumNonSighterScore(s.Shots);
+            Assert.Equal(expected[s.Name], computed);
+            Assert.Equal(expected[s.Name], s.ScoreText);
+        }
+    }
+
+    private static string SumNonSighterScore(IReadOnlyList<SmShot> shots)
+    {
+        int total = 0, xCount = 0;
+        foreach (var sh in shots)
+        {
+            if (sh.IsSighter || sh.Score == null) continue;
+            if (sh.Score.Equals("X", StringComparison.OrdinalIgnoreCase)) { total += 10; xCount++; }
+            else if (int.TryParse(sh.Score, out int v)) total += v;
+        }
+        return xCount > 0 ? $"{total}-{xCount}X" : total.ToString();
+    }
+
+    [Fact]
+    public void SingleTargetBlocksKeepTheirExistingNameAndScore()
+    {
+        // M1/M2/M3 R2 TT11 have only one target each and must be unaffected by the
+        // multi-target split: same name, single (non-joined) ScoreText.
+        var byName = Read(out _).ToDictionary(s => s.Name);
+        Assert.Equal("194-3X", byName["M3 R2 TT11"].ScoreText);
+        Assert.Equal("192-1X", byName["M2 R2 TT11"].ScoreText);
+        Assert.Equal("191-1X", byName["M1 R2 TT11"].ScoreText);
     }
 
     [Fact]

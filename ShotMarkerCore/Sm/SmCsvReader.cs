@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using ShotMarker.Core.Faces;
 
@@ -17,10 +16,12 @@ namespace ShotMarker.Core.Sm;
 ///  - x/y are already rounded to whole millimetres by the exporter.
 ///  - The face is a display name ("NRA Long Range FC"), not an id ("NRA_LRFC"); it is
 ///    matched against <see cref="TargetFaceLibrary"/> by name/short-name.
-///  - A multi-target string carries two targets' shots interleaved in one block, with
-///    the second target's row ids prefixed "R" (<c>RS1..RS5</c>, <c>R1..R20</c>) and a
-///    second composite score column in the header. Both targets are folded into one
-///    <see cref="SmString"/> — see the remarks on <see cref="Read"/> for why.
+///  - A block can carry TWO targets' shots interleaved (two rifles fired onto the same
+///    physical frame in one session), distinguished by the shot `id` column's prefix
+///    ("1,2,3.."/"S1.." vs "R1,R2,R3.."/"RS1,RS2.."). These are two different loads — a
+///    group spanning both would corrupt the group stats this plugin exists to compute —
+///    so each prefix becomes its OWN <see cref="SmString"/>. See the remarks on
+///    <see cref="Read"/> for how they are split, named and numbered.
 ///
 /// The last shot-row field is a quoted `sim_t(...)` blob that itself contains commas, so
 /// this reader parses CSV properly (quote-aware) rather than splitting on ','.
@@ -36,35 +37,55 @@ public static class SmCsvReader
     private static readonly Regex Distance =
         new(@"(\d+(?:\.\d+)?)\s*(y|m)\b", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
+    // A shot id is "<letter prefix?><S?><number>": "1"/"S1" (no prefix) or "R1"/"RS1" (a
+    // second, interleaved target). Non-greedy prefix so the optional "S" is only consumed
+    // when it is actually there (see ExtractPrefix's doc comment for worked examples).
+    private static readonly Regex IdPrefixPattern =
+        new(@"^(?<prefix>[A-Za-z]*?)S?(?<num>\d+)$", RegexOptions.Compiled);
+
     /// <remarks>
-    /// A multi-target string's two targets are NOT split into two <see cref="SmString"/>s.
-    /// The file names the block once ("M6 R1 TT11") and shares one physical frame between
-    /// both targets, so one <see cref="SmString"/> per block matches the six-strings-in,
-    /// six-strings-out shape the CSV reference documents. <see cref="SmShot.Number"/> is
-    /// assigned sequentially over the block's whole shot list in file order (both targets
-    /// interleaved, sighters included) — the same 1..N-over-everything convention
-    /// <c>SmTarReader</c> uses — so numbers never collide within the one list they share.
+    /// A block whose shot ids carry two distinct prefixes (the file's three "R1 TT11"
+    /// strings) is split into one <see cref="SmString"/> per prefix rather than folded into
+    /// one — each prefix is a different rifle/load, confirmed by summing each group's own
+    /// per-shot <c>score</c> column (non-sighter shots only, X = 10): it reproduces one of
+    /// the header's two declared composite scores exactly, and the mapping is in
+    /// first-appearance row order (the file's own R-then-unprefixed order maps to the
+    /// header's first-then-second score column). See task-5-report.md for the worked
+    /// numbers on all three multi-target strings.
+    ///
+    /// Naming: the unprefixed group ("1,2,3.."/"S1..") always keeps the block's own name
+    /// ("M6 R1 TT11"); a lettered-prefix group gets that name plus "[prefix]"
+    /// ("M6 R1 TT11 [R]") so both are identifiable and distinct. (If a block ever has no
+    /// unprefixed group at all, the first-appearing group keeps the plain name instead —
+    /// not exercised by the fixture, whose two groups are always "" and "R".)
+    ///
+    /// <see cref="SmShot.Number"/> restarts at 1 within each emitted string (sighters
+    /// included), the same convention <c>SmTarReader</c> uses — trivially collision-free
+    /// since each group gets its own shot list. <see cref="SmString.Id"/> stays unique
+    /// across the whole file via a single counter over every emitted string, not every
+    /// block.
     /// </remarks>
     public static IReadOnlyList<SmString> Read(TextReader csv, IList<string> log)
     {
         var result = new List<SmString>();
         var header = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         var scores = new List<string>();
-        List<SmShot>? shots = null;
+        List<RawShotRow>? rows = null;
         string[]? columns = null;
         int lineNo = 0;
 
         void Flush()
         {
-            if (shots is { Count: > 0 })
+            if (rows is { Count: > 0 })
             {
-                result.Add(Build(header, scores, shots, result.Count + 1, log));
+                foreach (SmString s in BuildStrings(header, scores, rows, log))
+                    result.Add(s with { Id = $"csv-{result.Count + 1}" });
             }
-            else if (shots != null)
+            else if (rows != null)
             {
                 log.Add($"string '{HeaderValue(header, "String") ?? "?"}': no shots — skipped");
             }
-            shots = null;
+            rows = null;
             columns = null;
             scores = new List<string>();
         }
@@ -78,7 +99,7 @@ public static class SmCsvReader
             if (IsColumnHeader(cells))
             {
                 columns = cells;
-                shots = new List<SmShot>();
+                rows = new List<RawShotRow>();
                 continue;
             }
 
@@ -89,13 +110,13 @@ public static class SmCsvReader
             bool isHeaderLine = columns == null || (cells.Length > 0 && cells[0].Trim().Length > 0);
             if (isHeaderLine)
             {
-                if (shots != null) Flush();
+                if (rows != null) Flush();
                 ParseHeaderLine(line, cells, header, scores);
                 continue;
             }
 
-            SmShot? shot = ReadShot(cells, columns!, shots!.Count + 1, lineNo, log);
-            if (shot != null) shots.Add(shot);
+            RawShotRow? row = ReadShotRow(cells, columns!, lineNo, log);
+            if (row != null) rows!.Add(row);
         }
         Flush();
         return result;
@@ -136,7 +157,14 @@ public static class SmCsvReader
         }
     }
 
-    private static SmShot? ReadShot(string[] cells, string[] columns, int number, int lineNo, IList<string> log)
+    /// <summary>One shot row, not yet assigned a final <see cref="SmShot.Number"/> — that
+    /// depends on which prefix group it ends up in, decided once the whole block has been
+    /// read (see <see cref="BuildStrings"/>).</summary>
+    private sealed record RawShotRow(
+        string Prefix, double XMm, double YMm, double? VelocityMps,
+        string? Score, double? TempC, bool IsSighter);
+
+    private static RawShotRow? ReadShotRow(string[] cells, string[] columns, int lineNo, IList<string> log)
     {
         double? Col(string name)
         {
@@ -165,18 +193,29 @@ public static class SmCsvReader
         // tag seen besides "sighter" — is on 150 of the fixture's 166 shot rows (every
         // record shot and most sighters), so it is a string-level status, not a per-shot
         // flag, and is not treated as IsInvalid. See task-5-report.md for the count.
-        return new SmShot(
-            number, x.Value, y.Value,
+        return new RawShotRow(
+            ExtractPrefix(Text("id") ?? ""),
+            x.Value, y.Value,
             Col("v fps") is { } fps and > 0 ? fps * MetresPerFoot : null,
             Text("score"), Col("temp C"),
-            tags.Contains("sighter", StringComparison.OrdinalIgnoreCase),
-            false);
+            tags.Contains("sighter", StringComparison.OrdinalIgnoreCase));
     }
 
-    private static SmString Build(
-        IDictionary<string, string> header, List<string> scores, List<SmShot> shots, int index, IList<string> log)
+    /// <summary>Extracts the target-grouping prefix from a shot id: "S1"/"1" -> "" (no
+    /// prefix), "RS1"/"R1" -> "R". An id that does not fit the pattern falls back to no
+    /// prefix (grouped with the block's own/base target) rather than becoming its own
+    /// group of one.</summary>
+    private static string ExtractPrefix(string id)
     {
-        string name = HeaderValue(header, "String") ?? $"String {index}";
+        if (id.Length == 0) return "";
+        Match m = IdPrefixPattern.Match(id);
+        return m.Success ? m.Groups["prefix"].Value : "";
+    }
+
+    private static List<SmString> BuildStrings(
+        IDictionary<string, string> header, List<string> scores, List<RawShotRow> rows, IList<string> log)
+    {
+        string name = HeaderValue(header, "String") ?? "String";
 
         // "NRA Long Range FC at 1000y" — split on the LAST " at " so a face name that
         // happens to contain " at " still separates correctly from the trailing distance.
@@ -201,7 +240,8 @@ public static class SmCsvReader
             log.Add($"string '{name}': no distance found in face field '{faceField}' — assuming 0 m");
 
         // "1887 x 1908" (real export) or "#220 1887 x 1908" (Target: line) — either way the
-        // first "<digits> x <digits>" in the field is the frame size.
+        // first "<digits> x <digits>" in the field is the frame size. One physical frame is
+        // shared by every target emitted from this block.
         Match fm = FrameSize.Match(HeaderValue(header, "Target") ?? "");
         double w = fm.Success ? double.Parse(fm.Groups[1].Value, CultureInfo.InvariantCulture) : 0;
         double h = fm.Success ? double.Parse(fm.Groups[2].Value, CultureInfo.InvariantCulture) : 0;
@@ -213,68 +253,65 @@ public static class SmCsvReader
 
         string faceId = ResolveFaceId(faceName, log, name);
 
-        // A multi-target string's header carries one composite score per target (two
-        // columns); SmString has a single ScoreText field, so both are kept, joined, rather
-        // than silently dropping the second target's score.
-        string? scoreText = scores.Count == 0 ? null : string.Join(" | ", scores);
+        // Group by id prefix, preserving each group's first-appearance row order — needed
+        // both for Number (restarts at 1 per group, in original row order) and for matching
+        // header score columns, which are declared in that same first-appearance order.
+        var appearanceOrder = new List<string>();
+        var byPrefix = new Dictionary<string, List<RawShotRow>>();
+        foreach (RawShotRow r in rows)
+        {
+            if (!byPrefix.TryGetValue(r.Prefix, out List<RawShotRow>? list))
+            {
+                list = new List<RawShotRow>();
+                byPrefix[r.Prefix] = list;
+                appearanceOrder.Add(r.Prefix);
+            }
+            list.Add(r);
+        }
 
-        return new SmString(
-            $"csv-{index}", name, ts, faceId, dist, unit, w, h, null, scoreText, shots, null);
+        string baseGroup = byPrefix.ContainsKey("") ? "" : appearanceOrder[0];
+
+        if (appearanceOrder.Count > 1 && scores.Count < appearanceOrder.Count)
+            log.Add($"string '{name}': {appearanceOrder.Count} targets but only {scores.Count} declared score column(s)");
+
+        // Emission order: the base group (plain name) first, then any additional lettered
+        // groups in their first-appearance order. Cosmetic only — does not affect Number or
+        // which score column a group gets (that is appearanceOrder, independent of this).
+        var emissionOrder = new List<string> { baseGroup };
+        emissionOrder.AddRange(appearanceOrder.Where(p => p != baseGroup));
+
+        var result = new List<SmString>();
+        foreach (string prefix in emissionOrder)
+        {
+            List<RawShotRow> groupRows = byPrefix[prefix];
+            var shots = new List<SmShot>();
+            foreach (RawShotRow r in groupRows)
+                shots.Add(new SmShot(shots.Count + 1, r.XMm, r.YMm, r.VelocityMps, r.Score, r.TempC, r.IsSighter, false));
+
+            string stringName = prefix == baseGroup ? name : $"{name} [{prefix}]";
+            int scoreIdx = appearanceOrder.IndexOf(prefix);
+            string? scoreText = scoreIdx >= 0 && scoreIdx < scores.Count ? scores[scoreIdx] : null;
+
+            // Id is a placeholder here — Read()'s Flush() overwrites it with a counter that
+            // runs over every emitted string in the whole file, not just this block's.
+            result.Add(new SmString("", stringName, ts, faceId, dist, unit, w, h, null, scoreText, shots, null));
+        }
+        return result;
     }
 
     private static string? HeaderValue(IDictionary<string, string> h, string key) =>
         h.TryGetValue(key, out string? v) ? v : null;
 
-    // ---- face name matching --------------------------------------------------------------
-
-    private static readonly Lazy<List<(string Id, string Name, string ShortName)>> Faces = new(LoadFaceIndex);
-
-    /// <summary>Reads the same embedded <c>targetfaces.json</c> resource
-    /// <see cref="TargetFaceLibrary"/> loads, purely to search by name/short-name — the
-    /// library itself only exposes lookup by id, and this keeps the index from ever
-    /// drifting out of step with it without adding a public surface to that committed
-    /// class.</summary>
-    private static List<(string Id, string Name, string ShortName)> LoadFaceIndex()
-    {
-        var list = new List<(string, string, string)>();
-        using Stream? s = typeof(TargetFaceLibrary).Assembly
-            .GetManifestResourceStream("ShotMarker.Core.Faces.targetfaces.json");
-        if (s == null) return list;
-
-        using JsonDocument doc = JsonDocument.Parse(s);
-        foreach (JsonProperty p in doc.RootElement.GetProperty("faces").EnumerateObject())
-        {
-            string id = p.Name;
-            string faceName = p.Value.TryGetProperty("name", out JsonElement n) && n.ValueKind == JsonValueKind.String
-                ? n.GetString()! : id;
-            string shortName = p.Value.TryGetProperty("shortname", out JsonElement sn) && sn.ValueKind == JsonValueKind.String
-                ? sn.GetString()! : id;
-            list.Add((id, faceName, shortName));
-        }
-        return list;
-    }
-
     /// <summary>Matches a CSV face display name ("NRA Long Range FC") against
-    /// <see cref="TargetFaceLibrary"/>'s name/short-name, first exactly then by
-    /// substring. No match logs and returns "" — the same empty-id sentinel
-    /// <c>SmTarReader</c> uses for a missing/unrecognised <c>face_id</c> — so a caller
-    /// already written against the .tar path (<c>TargetFaceLibrary.Find(id) ??
-    /// TargetFaceLibrary.Generic(w, h)</c>) falls back to the generic face for this case
+    /// <see cref="TargetFaceLibrary.FindByName"/>. No match logs and returns "" — the same
+    /// empty-id sentinel <c>SmTarReader</c> uses for a missing/unrecognised <c>face_id</c>
+    /// — so a caller already written against the .tar path (<c>TargetFaceLibrary.Find(id)
+    /// ?? TargetFaceLibrary.Generic(w, h)</c>) falls back to the generic face for this case
     /// too, without this reader needing to know about rendering.</summary>
     internal static string ResolveFaceId(string displayName, IList<string> log, string stringName)
     {
-        string needle = displayName.Trim();
-        if (needle.Length == 0) return "";
-
-        var exact = Faces.Value.FirstOrDefault(f =>
-            string.Equals(f.Name, needle, StringComparison.OrdinalIgnoreCase) ||
-            string.Equals(f.ShortName, needle, StringComparison.OrdinalIgnoreCase));
-        if (exact.Id != null) return exact.Id;
-
-        var loose = Faces.Value.FirstOrDefault(f =>
-            f.Name.Contains(needle, StringComparison.OrdinalIgnoreCase) ||
-            needle.Contains(f.Name, StringComparison.OrdinalIgnoreCase));
-        if (loose.Id != null) return loose.Id;
+        TargetFace? match = TargetFaceLibrary.FindByName(displayName);
+        if (match != null) return match.Id;
 
         log.Add($"string '{stringName}': no target face matches '{displayName}' — falling back to the generic face");
         return "";
