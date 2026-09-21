@@ -145,9 +145,9 @@ public class GrtShotGroupWriterTests
         SmString real = FirstString();
         var shots = real.Shots.ToList();
         shots.Add(new SmShot(shots.Count + 1, double.NaN, double.NaN, double.NaN,
-            null, null, IsSighter: false, IsInvalid: true));
+            null, null, IsSighter: false, IsInvalid: true, InSelectedGroup: null));
         shots.Add(new SmShot(shots.Count + 1, double.NaN, double.NaN, 812.5,
-            "X", null, IsSighter: true, IsInvalid: true));
+            "X", null, IsSighter: true, IsInvalid: true, InSelectedGroup: null));
         SmString poisoned = real with { Shots = shots };
 
         var doc = NewDoc();
@@ -213,7 +213,7 @@ public class GrtShotGroupWriterTests
         SmString real = FirstString();
         var shots = real.Shots
             .Select(sh => sh with { VelocityMps = double.NaN })
-            .Append(new SmShot(999, 10, 10, 800, "10", null, false, false))
+            .Append(new SmShot(999, 10, 10, 800, "10", null, false, false, true))
             .ToList();
 
         var doc = NewDoc();

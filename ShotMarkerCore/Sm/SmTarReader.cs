@@ -153,6 +153,10 @@ public static class SmTarReader
         (Dictionary<int, string> sighterScores, Dictionary<int, string> recordScores) =
             ParseScoreString(root);
 
+        // Null when the source does not say (no group, or a group with no usable `shots`
+        // array) — every shot then gets InSelectedGroup = null, never a guessed true/false.
+        HashSet<long>? memberTs = ReadGroupMemberTs(root, log, stringId);
+
         int sighterOrdinal = 0;
         int recordOrdinal = 0;
         int rawIndex = -1;
@@ -190,7 +194,7 @@ public static class SmTarReader
                     shots.Count + 1,
                     d.XMm ?? double.NaN, d.YMm ?? double.NaN,
                     d.VelocityMps, score, d.TempC,
-                    d.Sighter, invalid));
+                    d.Sighter, invalid, memberTs?.Contains(d.Ts)));
             }
             catch (Exception ex)
             {
@@ -226,7 +230,7 @@ public static class SmTarReader
                             shots.Count + 1,
                             d.XMm ?? double.NaN, d.YMm ?? double.NaN,
                             d.VelocityMps, d.ScoreOverride, d.TempC,
-                            d.Sighter, true));
+                            d.Sighter, true, null));
                         break;
                     case JsonValueKind.Object:
                         shots.Add(new SmShot(
@@ -235,7 +239,7 @@ public static class SmTarReader
                             Num(el, "v"), Str(el, "score"), Num(el, "temp"),
                             Str(el, "display_text")?.Contains("sighter", StringComparison.OrdinalIgnoreCase)
                                 == true,
-                            true));
+                            true, null));
                         break;
                     default:
                         log.Add($"{stringId}: shots_invalid[{i}] has unexpected shape ({el.ValueKind}) — skipped");
@@ -250,17 +254,18 @@ public static class SmTarReader
     }
 
     private readonly record struct DecodedShot(
-        bool Sighter, bool Fake, double? TempC, double? XMm, double? YMm, double? VelocityMps,
+        long Ts, bool Sighter, bool Fake, double? TempC, double? XMm, double? YMm, double? VelocityMps,
         int? ErrorCode, string? ScoreOverride);
 
     /// <summary>Ported from the ShotMarker bundle's <c>decode_shot</c>. Reads a cursor forward
     /// through the encoded string; a shot whose error byte (<c>d</c>) is non-zero has no
-    /// x/y/v at all — those fields stay null.</summary>
+    /// x/y/v at all — those fields stay null. <c>Ts</c> is the join key against a group's
+    /// member <c>shots[].ts</c> (task 9b) — every return path carries it.</summary>
     private static DecodedShot DecodeShot(string s)
     {
         var c = new Cursor(s);
 
-        _ = 16777216 * Decode64(c.Take(3)) + Decode64(c.Take(4)); // ts — not surfaced on SmShot
+        long ts = 16777216 * Decode64(c.Take(3)) + Decode64(c.Take(4));
 
         long f1 = c.Byte();
         bool sighter = (f1 & 4) != 0;
@@ -278,7 +283,7 @@ public static class SmTarReader
         }
 
         if (fake)
-            return new DecodedShot(sighter, true, null, null, null, null, null, scoreOverride);
+            return new DecodedShot(ts, sighter, true, null, null, null, null, null, scoreOverride);
 
         double temp = c.Byte() - 20;
         long a = Decode64(c.Take(2));
@@ -290,12 +295,12 @@ public static class SmTarReader
 
         long d = c.Byte();
         if (d != 0)
-            return new DecodedShot(sighter, false, temp, null, null, null, (int)d, scoreOverride);
+            return new DecodedShot(ts, sighter, false, temp, null, null, null, (int)d, scoreOverride);
 
         double x = Polar(Decode64(c.Take(2)), 4000, 1.6, 2047);
         double y = Polar(Decode64(c.Take(2)), 4000, 1.6, 2047);
         double v = (Decode64(c.Take(2)) + 1000) / FeetPerMetre;
-        return new DecodedShot(sighter, false, temp, x, y, v, 0, scoreOverride);
+        return new DecodedShot(ts, sighter, false, temp, x, y, v, 0, scoreOverride);
     }
 
     private static double Polar(long e, double t, double o, double i) =>
@@ -385,7 +390,7 @@ public static class SmTarReader
                     shots.Count + 1,
                     Num(sh, "x") ?? 0, Num(sh, "y") ?? 0,
                     Num(sh, "v"), Str(sh, "score"), Num(sh, "temp"),
-                    sighter, false));
+                    sighter, false, true));
             }
         }
         return shots;
@@ -419,6 +424,38 @@ public static class SmTarReader
     private static SmGroupStats ReadStatsFrom(JsonElement g) => new(
         Num(g, "mr"), Num(g, "size"), Num(g, "ctc"),
         Num(g, "v_avg"), Num(g, "v_sd"), Num(g, "v_es"));
+
+    /// <summary>The <c>ts</c> of every decoded member object in the same group
+    /// <see cref="ReadStats"/> reads its numbers from (task 9b) — the join key back onto the
+    /// root <c>shots</c> array's own decoded <see cref="DecodedShot.Ts"/>. Reuses
+    /// <see cref="Groups"/> rather than a second way of finding the group. Returns null —
+    /// "the source does not say" — both when there is no group at all (nothing to compare
+    /// against, same as <see cref="ReadStats"/> returning null silently) and, logging once,
+    /// when a group exists but carries no usable <c>shots</c> array. Never guesses in
+    /// between: a member whose <c>ts</c> is missing or non-numeric is simply not added, which
+    /// only shrinks the set a real shot could match, never grows it.</summary>
+    private static HashSet<long>? ReadGroupMemberTs(JsonElement root, IList<string> log, string stringId)
+    {
+        JsonElement? group = Groups(root).Select(g => (JsonElement?)g).FirstOrDefault();
+        if (group is not { } g) return null;
+
+        if (!g.TryGetProperty("shots", out JsonElement arr) || arr.ValueKind != JsonValueKind.Array)
+        {
+            log.Add($"{stringId}: group has no member shot list — group membership unavailable");
+            return null;
+        }
+
+        var members = new HashSet<long>();
+        foreach (JsonElement el in arr.EnumerateArray())
+        {
+            if (el.ValueKind == JsonValueKind.Object &&
+                el.TryGetProperty("ts", out JsonElement tsEl) &&
+                tsEl.ValueKind == JsonValueKind.Number &&
+                tsEl.TryGetInt64(out long ts))
+                members.Add(ts);
+        }
+        return members;
+    }
 
     private static DateTimeOffset Timestamp(JsonElement root) =>
         Num(root, "ts") is { } ms

@@ -2,12 +2,20 @@ namespace ShotMarker.Core.Sm;
 
 /// <summary>One shot. Position is millimetres from target centre with y up, as ShotMarker
 /// reports it; velocity is normalised to m/s at the reader boundary whatever the source said.</summary>
+/// <param name="InSelectedGroup">Whether ShotMarker counted this shot in the group it had
+/// selected. Null when the source does not say — the CSV export carries no group
+/// information.</param>
 public sealed record SmShot(
     int Number, double XMm, double YMm, double? VelocityMps,
-    string? Score, double? TempC, bool IsSighter, bool IsInvalid)
+    string? Score, double? TempC, bool IsSighter, bool IsInvalid,
+    bool? InSelectedGroup)
 {
-    /// <summary>Shots GRT should exclude from group statistics: sighters and rejects.</summary>
-    public bool IsFlyer => IsSighter || IsInvalid;
+    /// <summary>Shots GRT should exclude from group statistics: sighters, rejects, and —
+    /// when the source says so — shots ShotMarker itself left out of the group it had
+    /// selected on the device. <c>InSelectedGroup == false</c>, not <c>!= true</c>: a null
+    /// (the source does not say, e.g. the CSV export) must never make a shot a flyer, or
+    /// every group would silently lose every shot.</summary>
+    public bool IsFlyer => IsSighter || IsInvalid || InSelectedGroup == false;
 }
 
 /// <summary>ShotMarker's own computed statistics for a group, carried through unaltered

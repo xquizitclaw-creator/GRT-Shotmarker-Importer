@@ -286,7 +286,9 @@ public static class SmCsvReader
             List<RawShotRow> groupRows = byPrefix[prefix];
             var shots = new List<SmShot>();
             foreach (RawShotRow r in groupRows)
-                shots.Add(new SmShot(shots.Count + 1, r.XMm, r.YMm, r.VelocityMps, r.Score, r.TempC, r.IsSighter, false));
+                // The CSV carries no group-membership information at all — null, never a
+                // guessed true/false (task 9b).
+                shots.Add(new SmShot(shots.Count + 1, r.XMm, r.YMm, r.VelocityMps, r.Score, r.TempC, r.IsSighter, false, null));
 
             string stringName = prefix == baseGroup ? name : $"{name} [{prefix}]";
             int scoreIdx = appearanceOrder.IndexOf(prefix);

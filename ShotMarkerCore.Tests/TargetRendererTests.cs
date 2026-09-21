@@ -96,7 +96,7 @@ public class TargetRendererTests
         var withInvalid = s with
         {
             Shots = s.Shots
-                .Append(new SmShot(9001, double.NaN, double.NaN, null, null, null, false, true))
+                .Append(new SmShot(9001, double.NaN, double.NaN, null, null, null, false, true, null))
                 .ToList(),
         };
         TargetFace f = TargetFaceLibrary.Find(s.FaceId)!;
