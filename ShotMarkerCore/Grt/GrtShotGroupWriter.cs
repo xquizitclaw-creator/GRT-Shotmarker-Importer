@@ -169,9 +169,16 @@ public static class GrtShotGroupWriter
     private static void AddVelocities(GrtLoadDoc doc, ImportItem item, string title, IList<string> log)
     {
         SmString s = item.String;
-        // `is > 0` also rejects NaN (every comparison with NaN is false), which matters: the
-        // measurement writer formats velocities with ToString("0.0") and would emit "NaN".
-        var shots = s.Shots.Where(sh => sh.VelocityMps is > 0 && double.IsFinite(sh.VelocityMps.Value)).ToList();
+        // Ruling F27: the velocity series uses the same predicate as the shot group — exclude
+        // IsFlyer (sighters, rejects, and now shots ShotMarker itself left out of the group it
+        // had selected), keep the finiteness guard. The device's own v_avg/v_sd/v_es are the
+        // group's, not the whole string's, so any other filter reintroduces the exact
+        // mismatch task 9b exists to remove. `is > 0` also rejects NaN (every comparison with
+        // NaN is false), which matters: the measurement writer formats velocities with
+        // ToString("0.0") and would emit "NaN".
+        var shots = s.Shots
+            .Where(sh => !sh.IsFlyer && sh.VelocityMps is > 0 && double.IsFinite(sh.VelocityMps.Value))
+            .ToList();
         if (shots.Count == 0) { log.Add($"'{s.Name}': no velocities — measurement omitted"); return; }
 
         var charge = new GrtCharge
@@ -180,9 +187,9 @@ public static class GrtShotGroupWriter
             ValueKg = (item.ChargeGrains ?? 0) * KgPerGrain,
             Note = $"ShotMarker {s.Name}, {s.Timestamp:yyyy-MM-dd HH:mm}",
         };
+        // Every shot here already passed !IsFlyer, so its score is always the real one.
         foreach (SmShot sh in shots)
-            charge.Shots.Add(new GrtShot(sh.VelocityMps!.Value,
-                sh.IsFlyer ? "sighter/invalid" : sh.Score));
+            charge.Shots.Add(new GrtShot(sh.VelocityMps!.Value, sh.Score));
 
         doc.AddMeasurement(title, new[] { charge });
     }
@@ -202,13 +209,18 @@ public static class GrtShotGroupWriter
         if (s.Stats is { } st)
         {
             lines.Add("");
-            // Deliberately not "for these shots". ShotMarker computes these for the group the
-            // user had selected on the device, which need not be every scoring shot in the
-            // string: in fixture SM_export_Sep_21.tar the string has 20 record shots and the
-            // group has 19, so GRT's own analysis of this tab reads 406 mm where ShotMarker
-            // says 336 mm. Both are right about different shot sets; the note should not
-            // pretend otherwise. Group membership is not carried on SmString.
-            lines.Add("ShotMarker's own figures, for the group it had selected:");
+            // No longer hedged ("for the group it had selected"): task 9b makes GRT measure
+            // the same shots ShotMarker measured (SmShot.InSelectedGroup / IsFlyer), so its
+            // own analysis of this tab now agrees with these numbers rather than repeating a
+            // different shot set's. What can still differ from "every record shot fired" is
+            // stated below as a plain count, so an excluded shot is visible, not mysterious.
+            lines.Add("ShotMarker's own figures:");
+            if (s.Shots.Any(sh => sh.InSelectedGroup.HasValue))
+            {
+                int inGroup = s.Shots.Count(sh => sh.InSelectedGroup == true);
+                int recordShots = s.Shots.Count(sh => !sh.IsSighter);
+                lines.Add($"  {inGroup} of {recordShots} record shots");
+            }
             if (st.GroupSizeMm is { } g) lines.Add($"  group size    {g.ToString("0.0", ic)} mm");
             if (st.MeanRadiusMm is { } mr) lines.Add($"  mean radius   {mr.ToString("0.0", ic)} mm");
             if (st.CtcMm is { } ctc) lines.Add($"  centre-centre {ctc.ToString("0.0", ic)} mm");
