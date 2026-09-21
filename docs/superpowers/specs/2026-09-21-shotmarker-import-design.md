@@ -202,7 +202,9 @@ recorded here, not fixed here.
 
 ## Target faces
 
-The ShotMarker web application defines **206 built-in target faces**. Its
+The ShotMarker web application defines **208 built-in target faces** (206 are
+assigned directly by name; 2 more are built by helper calls, which is why a
+regex over the bundle undercounts them). Its
 `custom_targetfaces.js` documents the schema: a `board` (`w`, `h`, `line`), an
 array of `rings` (`diam` in mm, `color` from `w`/`b`/`g`/`wl`/`bl`/`gl`, `line`
 thickness, `score`), optional `poly` shapes, and `score` giving the point value
@@ -279,7 +281,7 @@ Also covered:
 - Unit normalisation: fps→m/s, yards→metres, inches→mm.
 - Cross-format agreement: the strings common to both fixtures produce matching
   shot positions and velocities.
-- Face extraction: all 206 faces parse; `NRA_LRFC` matches published dimensions.
+- Face extraction: all 208 faces parse; `NRA_LRFC` matches published dimensions.
 - Golden-image test of the renderer.
 - Writer output parses as well-formed XML and GRT's own schema expectations.
 
