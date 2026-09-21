@@ -8,7 +8,15 @@ namespace ShotMarker.Core.Render;
 /// play once a shot needs the canvas to grow past that.</param>
 /// <param name="DrawFurniture">ShotMarker's own overlay: numbered discs, group box and
 /// statistics. GRT draws its own on top, so this can be turned off for a clean face.</param>
+/// <param name="DrawText">Every piece of lettering: the face's own ring numerals, the number
+/// on each shot disc, and the statistics banner. Ruling F41: SkiaSharp hands glyph
+/// rasterization to the platform font host — CoreText on macOS, DirectWrite on Windows — so
+/// the same embedded typeface still produces different ink on each machine. Turning text off
+/// leaves only geometry, which the two platforms agree on to within one bit of antialiasing
+/// coverage, and that is what makes a portable golden image possible. Nothing but the golden
+/// test should ever set this false: a picture with no numbers on it is useless to a shooter.
+/// </param>
 public sealed record RenderOptions(
-    double PixelsPerMm = 0.6, double MarginMm = 25, bool DrawFurniture = true);
+    double PixelsPerMm = 0.6, double MarginMm = 25, bool DrawFurniture = true, bool DrawText = true);
 
 public sealed record RenderedTarget(byte[] Png, int Width, int Height, TargetProjection Projection);

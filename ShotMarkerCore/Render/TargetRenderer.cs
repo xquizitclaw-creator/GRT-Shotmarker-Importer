@@ -66,9 +66,9 @@ public static class TargetRenderer
         DrawBoard(canvas, proj, face);
         DrawRings(canvas, proj, face);
         DrawPolys(canvas, proj, face);
-        DrawTexts(canvas, proj, face);
-        DrawShots(canvas, proj, plottable, s.BulletDiameterMm);
-        if (o.DrawFurniture) DrawFurniture(canvas, proj, s);
+        if (o.DrawText) DrawTexts(canvas, proj, face);
+        DrawShots(canvas, proj, plottable, s.BulletDiameterMm, o.DrawText);
+        if (o.DrawFurniture) DrawFurniture(canvas, proj, s, o.DrawText);
 
         using SKImage image = surface.Snapshot();
         using SKData data = image.Encode(SKEncodedImageFormat.Png, 100);
@@ -179,7 +179,7 @@ public static class TargetRenderer
 
     /// <param name="shots">Already filtered to exclude <see cref="SmShot.IsInvalid"/> shots
     /// — their coordinates are double.NaN and cannot be plotted at all.</param>
-    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm)
+    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm, bool drawText)
     {
         float radius = p.Px((bulletDiameterMm ?? 7.2) / 2);
         float discRadius = Math.Max(radius, 8);
@@ -205,6 +205,7 @@ public static class TargetRenderer
             c.DrawCircle(x, y, discRadius, fill);
             c.DrawCircle(x, y, discRadius, edge);
 
+            if (!drawText) continue;
             using var label = new SKPaint
             {
                 Color = SKColors.White, IsAntialias = true,
@@ -215,16 +216,11 @@ public static class TargetRenderer
         }
     }
 
-    private static void DrawFurniture(SKCanvas c, TargetProjection p, SmString s)
+    private static void DrawFurniture(SKCanvas c, TargetProjection p, SmString s, bool drawText)
     {
-        // !IsFlyer always excludes IsInvalid (IsFlyer => IsSighter || IsInvalid || ...), so
-        // this group box never touches a NaN coordinate either — whatever else IsFlyer comes
-        // to include over time (task 9b added InSelectedGroup == false).
-        var scoring = s.Shots.Where(sh => !sh.IsFlyer).ToList();
-        if (scoring.Count == 0) return;
+        if (ScoringExtentMm(s) is not { } extent) return;
+        var (x0, x1, y0, y1) = extent;
 
-        double x0 = scoring.Min(sh => sh.XMm), x1 = scoring.Max(sh => sh.XMm);
-        double y0 = scoring.Min(sh => sh.YMm), y1 = scoring.Max(sh => sh.YMm);
         var (left, top) = p.ToPixel(x0, y1);
         var (right, bottom) = p.ToPixel(x1, y0);
 
@@ -236,6 +232,7 @@ public static class TargetRenderer
         };
         c.DrawRect(new SKRect(left, top, right, bottom), box);
 
+        if (!drawText) return;
         string stats = Stats(s, x1 - x0, y1 - y0);
         using var text = new SKPaint
         {
@@ -247,6 +244,25 @@ public static class TargetRenderer
         c.DrawRect(new SKRect(10, 10, 20 + w, 46), plate);
         c.DrawText(stats, 15, 36, text);
     }
+
+    /// <summary>The bounding box of the shots the group box is drawn around, or null when the
+    /// string has none. !IsFlyer always excludes IsInvalid (IsFlyer => IsSighter || IsInvalid
+    /// || ...), so this never touches a NaN coordinate — whatever else IsFlyer comes to
+    /// include over time (task 9b added InSelectedGroup == false).</summary>
+    private static (double X0, double X1, double Y0, double Y1)? ScoringExtentMm(SmString s)
+    {
+        var scoring = s.Shots.Where(sh => !sh.IsFlyer).ToList();
+        if (scoring.Count == 0) return null;
+        return (scoring.Min(sh => sh.XMm), scoring.Max(sh => sh.XMm),
+                scoring.Min(sh => sh.YMm), scoring.Max(sh => sh.YMm));
+    }
+
+    /// <summary>The statistics banner exactly as <see cref="Render"/> paints it, or an empty
+    /// string when the group box is not drawn. Ruling F41 made the golden image text-free, so
+    /// this is how the banner's wording and figures are asserted — as the string logic they
+    /// are, with no pixels involved.</summary>
+    public static string StatsBanner(SmString s) =>
+        ScoringExtentMm(s) is { } e ? Stats(s, e.X1 - e.X0, e.Y1 - e.Y0) : string.Empty;
 
     private static string Stats(SmString s, double widthMm, double heightMm)
     {

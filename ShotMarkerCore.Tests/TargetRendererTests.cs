@@ -1,3 +1,4 @@
+using System.Globalization;
 using ShotMarker.Core.Faces;
 using ShotMarker.Core.Render;
 using ShotMarker.Core.Sm;
@@ -136,8 +137,19 @@ public class TargetRendererTests
     [Fact]
     public void MatchesTheGoldenImage()
     {
+        // Ruling F41: the golden is rendered with text suppressed and compared with a +/-2
+        // per-channel tolerance, because SkiaSharp is not byte-reproducible across platforms
+        // for *any* content. Measured on the same tree and the same fixture, macOS against
+        // Windows: with text drawn, 11587 pixels differ by up to 217; with text suppressed,
+        // 6570 differ by exactly 1 and the geometry is pixel-identical. So +/-2 is portable
+        // with margin, and still a real tripwire — a disc that moves, recolours or resizes
+        // shifts its pixels by 100 or more.
+        //
+        // A percentage-of-pixels threshold was rejected on arithmetic: one moved 20px-radius
+        // disc touches ~0.2% of the image, which is *under* the ~1% platform noise, so the
+        // threshold loose enough to tolerate the noise is blind to the regression.
         SmString s = FirstString();
-        var r = TargetRenderer.Render(s, TargetFaceLibrary.Find(s.FaceId)!);
+        var r = TargetRenderer.Render(s, TargetFaceLibrary.Find(s.FaceId)!, new RenderOptions(DrawText: false));
         string golden = Fixtures.Path("golden/nra_lrfc_m1r2.png");
 
         if (Environment.GetEnvironmentVariable("SHOTMARKER_WRITE_GOLDEN") == "1")
@@ -147,6 +159,76 @@ public class TargetRendererTests
         }
 
         Assert.True(File.Exists(golden), "run once with SHOTMARKER_WRITE_GOLDEN=1, then eyeball the PNG");
-        Assert.Equal(File.ReadAllBytes(golden), r.Png);
+        AssertPixelsMatch(File.ReadAllBytes(golden), r.Png, tolerance: 2);
+    }
+
+    /// <summary>Compares two PNGs allowing each channel to differ by <paramref name="tolerance"/>.
+    /// Dimensions are asserted exactly first — a size change is a real regression and must not
+    /// be absorbed by the tolerance — and a failure reports how many pixels were out and the
+    /// worst delta, because "arrays differ" is what made this expensive to diagnose.</summary>
+    private static void AssertPixelsMatch(byte[] expectedPng, byte[] actualPng, int tolerance)
+    {
+        using SKBitmap expected = SKBitmap.Decode(expectedPng);
+        using SKBitmap actual = SKBitmap.Decode(actualPng);
+
+        Assert.Equal((expected.Width, expected.Height), (actual.Width, actual.Height));
+
+        int outOfTolerance = 0, worst = 0;
+        (int X, int Y) worstAt = (0, 0);
+        for (int y = 0; y < expected.Height; y++)
+        {
+            for (int x = 0; x < expected.Width; x++)
+            {
+                SKColor e = expected.GetPixel(x, y), a = actual.GetPixel(x, y);
+                int delta = Math.Max(
+                    Math.Max(Math.Abs(e.Red - a.Red), Math.Abs(e.Green - a.Green)),
+                    Math.Max(Math.Abs(e.Blue - a.Blue), Math.Abs(e.Alpha - a.Alpha)));
+                if (delta <= tolerance) continue;
+                outOfTolerance++;
+                if (delta > worst) (worst, worstAt) = (delta, (x, y));
+            }
+        }
+
+        Assert.True(outOfTolerance == 0,
+            $"{outOfTolerance} of {expected.Width * expected.Height} pixels differ by more than "
+            + $"{tolerance}; worst delta {worst} at ({worstAt.X}, {worstAt.Y}). "
+            + "Rerun with SHOTMARKER_WRITE_GOLDEN=1 and eyeball the PNG if this change was intended.");
+    }
+
+    [Fact]
+    public void TheStatsBannerReadsTheDeviceFigures()
+    {
+        // Ruling F41 took every glyph out of the golden image, so the banner's wording and
+        // figures are asserted here instead — as the string logic they actually are. These
+        // are ShotMarker's own numbers for M1 R2 TT11, straight out of the .tar.
+        SmString s = FirstString();
+        string banner = TargetRenderer.StatsBanner(s);
+
+        Assert.StartsWith("size ", banner);
+        Assert.Contains(" mm", banner);
+        Assert.Contains("w ", banner);
+        Assert.Contains("h ", banner);
+        Assert.Contains($"size {s.Stats!.GroupSizeMm!.Value.ToString("0.0", CultureInfo.InvariantCulture)} mm", banner);
+        Assert.Contains($"mr {s.Stats.MeanRadiusMm!.Value.ToString("0.0", CultureInfo.InvariantCulture)}", banner);
+        Assert.Contains($"v {s.Stats.VelocityAvgMps!.Value.ToString("0", CultureInfo.InvariantCulture)} m/s", banner);
+        Assert.Contains($"sd {s.Stats.VelocitySdMps!.Value.ToString("0.0", CultureInfo.InvariantCulture)}", banner);
+        Assert.Contains($"es {s.Stats.VelocityEsMps!.Value.ToString("0.0", CultureInfo.InvariantCulture)}", banner);
+    }
+
+    [Fact]
+    public void SuppressingTextActuallyRemovesInk()
+    {
+        // The guard against someone later defaulting DrawText off by accident and silently
+        // shipping pictures with no shot numbers on them — which the golden, now text-free,
+        // would no longer notice.
+        SmString s = FirstString();
+        TargetFace f = TargetFaceLibrary.Find(s.FaceId)!;
+        var withText = TargetRenderer.Render(s, f, new RenderOptions(DrawText: true));
+        var without = TargetRenderer.Render(s, f, new RenderOptions(DrawText: false));
+
+        Assert.Equal(withText.Width, without.Width);
+        Assert.Equal(withText.Height, without.Height);
+        Assert.NotEqual(withText.Png, without.Png);
+        Assert.True(new RenderOptions().DrawText, "text must stay on by default");
     }
 }
