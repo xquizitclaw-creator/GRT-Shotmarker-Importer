@@ -137,7 +137,10 @@ public class RoundTripTests
         var (metricDoc, s, _) = Import(null);
         var (imperialDoc, _, _) = Import(imperial);
 
-        // The two files carry different numbers ...
+        // The two files carry different numbers ... The 25.4 and 0.9144 are spelled out here
+        // on purpose: reusing GrtUnits' constants would make this assertion agree with the
+        // writer by construction instead of checking it against the definition of an inch
+        // and a yard.
         GrtShotGroup mTab = metricDoc.ShotGroups().Single();
         GrtShotGroup iTab = imperialDoc.ShotGroups().Single();
         Assert.Equal(mTab.RefDistance / 25.4, iTab.RefDistance, 6);
