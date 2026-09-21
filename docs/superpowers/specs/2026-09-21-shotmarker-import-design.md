@@ -155,6 +155,13 @@ bounding box and the stats overlay. Returns the geometry alongside the image
 because the caller needs the exact mm-to-pixel mapping used, and recomputing it
 independently would be a second source of truth.
 
+GRT draws its own furniture over the picture — group box, extreme spread, SD
+rings, flyer marks — as its `color_shotgroup_*` palette shows. The ShotMarker
+group box and stats overlay therefore sit underneath a second set of the same
+markings. The renderer keeps them, per the approved design, but behind a
+`DrawFurniture` flag so a clean scoring face is one setting away if the doubled
+overlay reads badly in practice.
+
 ### `GrtShotGroupWriter`
 
 Takes rendered strings and an open load, writes the sibling `.grtload`: one
@@ -227,9 +234,10 @@ bar, no scoring rings — and logs a warning. It never aborts the import.
 4. The user ticks strings and imports. Each selected string becomes its own
    shot-group tab. One charge per string is the normal case; the column is
    editable so a ladder shot across several strings still resolves correctly.
-5. The plugin writes a timestamped sibling `.grtload` and reports the path. The
-   open load is never modified — matching the existing toolkit's behaviour and
-   the GRT plugin interface's constraints.
+5. The plugin writes a timestamped sibling `.grtload`, then sends `Load_File`
+   so GRT opens it immediately; the reported path is the fallback if that
+   command fails. The open load is never modified — matching the existing
+   toolkit's behaviour and the GRT plugin interface's constraints.
 
 ### Sighters, flyers and invalid shots
 
@@ -277,18 +285,29 @@ Also covered:
 
 ## Open questions
 
-**Sample B — must be resolved before implementation.** The first sample GRT load
-saved its picture but recorded no reference points and no `<group>`/`<point>`
-elements. A second sample, with the two reference points placed across the X ring
-at a reference distance of exactly 5 inches, two or three shots marked, one
-flagged as a flyer and one as point-of-aim, resolves two things at once:
+**A calibration sample is the first task of implementation.** Every `.grtload`
+on the GRT machine has been scanned: exactly one contains a `<ShotGroup>`, and
+it has zero `<group>` and zero `<point>` elements. The shot-group documentation
+explains why — points exist only after the **"(+) Group"** and **"(+) Shot"**
+buttons are used; clicking the picture alone records nothing. No file to learn
+the format from therefore exists yet, and none can be derived: it has to be
+authored in GRT by hand, once.
 
-1. **Storage units.** `refDistance="127"` confirms millimetres; `refDistance="5"`
-   would mean display units, and the writer — and the unit handling throughout
-   this design — would change accordingly.
+The sample needs two reference points placed across a ring of known width, a
+few marked shots, one flagged as a flyer and one as point of aim. It resolves:
+
+1. **Storage units.** For a 10-inch reference, `refDistance="254"` confirms
+   millimetres and `refDistance="10"` means display units — in which case the
+   writer, and the unit handling throughout this design, change accordingly.
+   The surrounding evidence points at millimetres: the same file already stores
+   `shootDistance="914.4"` for 1000 yards under a `range=yard` configuration.
 2. **Point serialisation.** The exact `<group>`/`<point>` attribute spelling,
    currently known only from the toolkit's reader rather than from a file GRT
    wrote.
+
+Until it exists, the writer cannot be finished — so the plan front-loads the
+capture, and the work that does not depend on it (readers, faces, renderer)
+proceeds in parallel.
 
 ## Known GRT tab attributes
 
