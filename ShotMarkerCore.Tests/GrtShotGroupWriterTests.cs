@@ -224,6 +224,39 @@ public class GrtShotGroupWriterTests
         Assert.Equal(800, written[0].VelocityMps, 3);
     }
 
+    /// <summary>
+    /// F28: the note's "Shots: N (K sighter/invalid)" label must count exactly what it names.
+    /// Task 9b widened <see cref="SmShot.IsFlyer"/> to also cover a valid record shot
+    /// ShotMarker's own group left out, so counting <c>IsFlyer</c> here (as the line used to)
+    /// would claim M1 R2 TT11 has six sighter/invalid shots when it has five. That sixth shot
+    /// is shot 11 — genuine and scoring — already reported honestly, and separately, by the
+    /// "{inGroup} of {recordShots} record shots" line pinned below.
+    /// </summary>
+    [Fact]
+    public void TheShotCountLabelCountsExactlyWhatItNames()
+    {
+        var doc = NewDoc();
+        GrtShotGroupWriter.Add(doc, Item(), new List<string>());
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".grtload");
+        try
+        {
+            doc.Save(path);
+            string text = NoteText(path);
+            Assert.Contains("(5 sighter/invalid)", text);
+            Assert.Contains("19 of 20 record shots", text);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>The decoded text of the single &lt;note&gt; in a saved load.</summary>
+    private static string NoteText(string path)
+    {
+        var xml = new System.Xml.XmlDocument();
+        xml.Load(path);
+        var note = (System.Xml.XmlElement)xml.SelectSingleNode("//note")!;
+        return Uri.UnescapeDataString(note.GetAttribute("text"));
+    }
+
     // ---- the unit conversions are exact inverses of the reader's -----------------------
 
     [Theory]

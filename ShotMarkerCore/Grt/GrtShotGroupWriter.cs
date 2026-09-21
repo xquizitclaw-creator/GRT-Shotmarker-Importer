@@ -203,7 +203,11 @@ public static class GrtShotGroupWriter
             $"Shot:       {s.Timestamp:yyyy-MM-dd HH:mm}",
             $"Distance:   {s.DistanceValue.ToString("0", ic)} {s.DistanceUnit}",
             $"Face:       {s.FaceId}",
-            $"Shots:      {s.Shots.Count} ({s.Shots.Count(sh => sh.IsFlyer)} sighter/invalid)",
+            // Counts what the label says. IsFlyer is wider since task 9b (it now also covers a
+            // valid record shot ShotMarker's own group left out), and that shot is reported
+            // honestly and separately by the "{inGroup} of {recordShots} record shots" line
+            // below — counting it here too would make this line lie about the user's data.
+            $"Shots:      {s.Shots.Count} ({s.Shots.Count(sh => sh.IsSighter || sh.IsInvalid)} sighter/invalid)",
         };
         if (s.ScoreText is { Length: > 0 }) lines.Add($"Score:      {s.ScoreText}");
         if (s.Stats is { } st)
