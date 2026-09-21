@@ -2109,7 +2109,7 @@ If that entry point does not exist, write the golden from a test run instead —
     {
         SmString s = FirstString();
         var r = TargetRenderer.Render(s, TargetFaceLibrary.Find(s.FaceId)!);
-        string golden = Fixtures.Path("golden/nra_lrfc_m6r1.png");
+        string golden = Fixtures.Path("golden/nra_lrfc_m1r2.png");
 
         if (Environment.GetEnvironmentVariable("SHOTMARKER_WRITE_GOLDEN") == "1")
         {
@@ -2124,7 +2124,7 @@ If that entry point does not exist, write the golden from a test run instead —
 
 ```bash
 SHOTMARKER_WRITE_GOLDEN=1 dotnet test --filter "FullyQualifiedName~MatchesTheGoldenImage"
-open fixtures/golden/nra_lrfc_m6r1.png
+open fixtures/golden/nra_lrfc_m1r2.png
 dotnet test --filter "FullyQualifiedName~TargetRendererTests"
 ```
 
