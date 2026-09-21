@@ -120,7 +120,7 @@ public class TargetRendererTests
     {
         SmString s = FirstString();
         var r = TargetRenderer.Render(s, TargetFaceLibrary.Find(s.FaceId)!);
-        string golden = Fixtures.Path("golden/nra_lrfc_m6r1.png");
+        string golden = Fixtures.Path("golden/nra_lrfc_m1r2.png");
 
         if (Environment.GetEnvironmentVariable("SHOTMARKER_WRITE_GOLDEN") == "1")
         {
