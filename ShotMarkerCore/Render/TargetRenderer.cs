@@ -24,8 +24,10 @@ public static class TargetRenderer
         // entire picture, sighters and valid record shots included.
         var plottable = s.Shots.Where(sh => !sh.IsInvalid).ToList();
 
-        double widthMm = face.BoardWidthMm + 2 * o.MarginMm;
-        double heightMm = face.BoardHeightMm + 2 * o.MarginMm;
+        // Ruling S1: the base extent is the board's own true mm size — no padding added
+        // unconditionally. It only grows if a shot needs more room than the board gives it.
+        double widthMm = face.BoardWidthMm;
+        double heightMm = face.BoardHeightMm;
         // Never clip a hit: grow the canvas if a shot lies outside the board.
         foreach (SmShot sh in plottable)
         {
@@ -67,6 +69,12 @@ public static class TargetRenderer
     {
         "wl" => SKColors.White,
         "gl" => new SKColor(0x60, 0x60, 0x60),
+        // Ruling F18/F18a: "b" rings are filled the same near-black as the default stroke
+        // below, so their outline would otherwise be invisible against their own fill
+        // (X/10/9/8/7 on NRA_LRFC). Only "b" collides like this — "w" and "g" already
+        // contrast against the default stroke — so this is the one narrow case added,
+        // not a general luminance-based contrast rule.
+        "b" => SKColors.White,
         _ => new SKColor(0x20, 0x20, 0x20),
     };
 
