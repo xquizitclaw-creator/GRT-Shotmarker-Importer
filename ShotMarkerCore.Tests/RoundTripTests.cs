@@ -128,6 +128,126 @@ public class RoundTripTests
             "the fixture is supposed to contain sighters — this test would otherwise prove nothing");
     }
 
+    // ---- task 9b: honour ShotMarker's group selection ----------------------------------
+
+    /// <summary>Extreme spread — the maximum distance between any two of a group's points.
+    /// ShotMarker's own <see cref="SmGroupStats.GroupSizeMm"/> is exactly this figure computed
+    /// over the 19 selected shots' ground-truth millimetres (verified empirically while writing
+    /// this test: the two agreed to 0 difference, not merely close), so it is also how "the
+    /// same 336.4045mm" is computed on both sides of the round trip below.</summary>
+    private static double ExtremeSpreadMm(IEnumerable<(double X, double Y)> points)
+    {
+        var pts = points.ToList();
+        double max = 0;
+        for (int i = 0; i < pts.Count; i++)
+            for (int j = i + 1; j < pts.Count; j++)
+            {
+                double dx = pts[i].X - pts[j].X, dy = pts[i].Y - pts[j].Y;
+                max = Math.Max(max, Math.Sqrt(dx * dx + dy * dy));
+            }
+        return max;
+    }
+
+    /// <summary>
+    /// Task 9b test 6, the load-bearing proof this task exists for: with the group selection
+    /// now honoured (<see cref="SmShot.InSelectedGroup"/> / <see cref="SmShot.IsFlyer"/>),
+    /// GRT's own independent reader recomputes the same 336.4045mm extreme spread the device
+    /// reported over its 19 selected shots — not the 406.5mm a naive "all 20 record shots"
+    /// group would give.
+    ///
+    /// <para>Tolerance: 0.001mm (one micron), derived rather than tuned. <see
+    /// cref="GrtShotGroupWriter"/> writes hits as continuous <c>double</c> fractions of the
+    /// picture (<see cref="TargetProjection.ToFraction"/> never rounds), and
+    /// <c>GrtShotGroups.FromDoc</c> recovers millimetres as <c>(fraction - origin) * w *
+    /// (refMm / refPx)</c> where <c>refPx = (refP2X - refP1X) * w</c> — the same integer pixel
+    /// width <c>w</c> both the writer and the reader use algebraically cancels out of the X
+    /// axis entirely, leaving only IEEE double round-off (round-trip <c>"R"</c>-format XML
+    /// serialisation is lossless). The Y axis is not immune in principle — it depends on the
+    /// image's pixel <em>height</em> too, and width and height round to integer pixels
+    /// independently — but empirically, printing the ground-truth and read-back figures side
+    /// by side while designing this test showed them differing by 1.1e-13mm, i.e. double
+    /// rounding noise, nothing structural. 0.001mm keeps three further orders of magnitude of
+    /// headroom above that observed noise while remaining 70,000x tighter than the 70mm this
+    /// task's fix is meant to prove (336.4mm vs. the old, wrong 406.5mm).</para>
+    /// </summary>
+    [Fact]
+    public void TheExtremeSpreadAgreesWithTheDevicesSelectedGroupNotTheWholeString()
+    {
+        GrtConfig metric = Metric();
+        var (doc, s, _) = Import(metric);
+        Assert.Equal("M1 R2 TT11", s.Name); // the fixture's first string, per SmTarReaderTests
+        List<SmShot> scoring = Scoring(s);
+        Assert.Equal(19, scoring.Count); // the device's own selected group, not all 20 record shots
+
+        double deviceMm = s.Stats!.GroupSizeMm!.Value;
+        Assert.Equal(336.4045, deviceMm, 3);
+
+        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        TargetGroup g = groups.Single();
+        double mmPerMoa = GrtShotGroups.MoaMm(s.DistanceMetres);
+        double readBackMm = ExtremeSpreadMm(g.Impacts.Select(i => (i.XMoa * mmPerMoa, i.YMoa * mmPerMoa)));
+
+        Assert.True(Math.Abs(readBackMm - deviceMm) < 0.001,
+            $"expected {deviceMm}mm (device, 19 selected shots), GRT's own reader computed {readBackMm}mm");
+
+        // The wrong number this task replaces: all 20 non-sighter shots, including the one
+        // ShotMarker itself excluded. If this ever regressed back to "every record shot",
+        // the read-back figure would land near here instead, not near deviceMm above.
+        double allRecordShotsMm = ExtremeSpreadMm(
+            s.Shots.Where(sh => !sh.IsSighter && !sh.IsInvalid).Select(sh => (sh.XMm, sh.YMm)));
+        Assert.True(Math.Abs(allRecordShotsMm - 406.5) < 0.5);
+        Assert.True(Math.Abs(readBackMm - allRecordShotsMm) > 1,
+            "the read-back figure must not accidentally match the over-inclusive one");
+    }
+
+    /// <summary>
+    /// Task 9b test 7: the measurement tab's velocity series — written by <see
+    /// cref="GrtShotGroupWriter"/>'s F27 fix, which filters by the same <c>!IsFlyer</c> as the
+    /// shot group — reproduces the device's own v_avg/v_sd/v_es for M1 R2 TT11's 19 selected
+    /// shots. Sample standard deviation (divide by n-1, matching what the device's own
+    /// v_sd — verified below by cross-check, not just against the brief's literal — implies)
+    /// and max-minus-min extreme spread.
+    ///
+    /// <para>Tolerance: <c>GrtLoadDoc.AddMeasurement</c> (the toolkit's own code, not this
+    /// plugin's, and not something task 9b may touch) writes each shot's velocity as
+    /// <c>ToString("0.0")</c> — one decimal place. That is a real, fixed 0.1 m/s quantisation
+    /// every velocity survives the round trip through, not a defect of this test. Over 19
+    /// shots independently rounded by up to ±0.05, the average and sample sd it produces land
+    /// within a few thousandths of the unrounded figures (observed: ~0.004 for both, while
+    /// designing this test); the extreme spread is two independent ±0.05 roundings apart from
+    /// the unrounded max−min, so up to ±0.1 (observed: ~0.02). 0.05 m/s for avg/sd and 0.15 m/s
+    /// for es keep clear headroom above what was actually observed while staying far tighter
+    /// than a wrong-shot-set mismatch would produce (the F27 regression this guards against —
+    /// the whole string's v_avg/v_sd/v_es differ from the 19-shot group's by whole m/s, not
+    /// hundredths).</para>
+    /// </summary>
+    [Fact]
+    public void TheVelocitySeriesReproducesTheDevicesFigures()
+    {
+        GrtConfig metric = Metric();
+        var (doc, s, _) = Import(metric);
+
+        List<GrtShot> written = doc.Measurements().Single().Charges[0].Shots;
+        var v = written.Select(sh => sh.VelocityMps).ToList();
+        Assert.Equal(19, v.Count); // the device's own selected group, not all 20 record shots
+
+        double avg = v.Average();
+        double sd = Math.Sqrt(v.Sum(x => (x - avg) * (x - avg)) / (v.Count - 1));
+        double es = v.Max() - v.Min();
+
+        const double avgSdTolMps = 0.05, esTolMps = 0.15;
+
+        Assert.True(Math.Abs(avg - 570.2487) < avgSdTolMps, $"avg={avg}");
+        Assert.True(Math.Abs(sd - 6.6553) < avgSdTolMps, $"sd={sd}");
+        Assert.True(Math.Abs(es - 24.0792) < esTolMps, $"es={es}");
+
+        // Cross-check against the device's own stated figures carried on SmString.Stats, not
+        // just literals in this test.
+        Assert.True(Math.Abs(avg - s.Stats!.VelocityAvgMps!.Value) < avgSdTolMps);
+        Assert.True(Math.Abs(sd - s.Stats!.VelocitySdMps!.Value) < avgSdTolMps);
+        Assert.True(Math.Abs(es - s.Stats!.VelocityEsMps!.Value) < esTolMps);
+    }
+
     // ---- the units are GRT's, not ours -------------------------------------------------
 
     /// <summary>
