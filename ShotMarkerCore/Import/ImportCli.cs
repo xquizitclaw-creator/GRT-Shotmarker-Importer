@@ -18,8 +18,21 @@ public static class ImportCli
         }
 
         var log = new List<string>();
-        double? charge = args.Length >= 3 &&
-            double.TryParse(args[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double g) ? g : null;
+
+        // Ruling F34: a malformed --charge is a scripting mistake, not a "no charge given"
+        // that TryParse can quietly turn into null. Silently dropping it and exiting 0 would
+        // report success on a ladder import whose charges never made it in.
+        double? charge = null;
+        if (args.Length >= 3)
+        {
+            if (!double.TryParse(args[2], NumberStyles.Float, CultureInfo.InvariantCulture, out double g))
+            {
+                log.Add($"'{args[2]}': not a valid charge (grains)");
+                foreach (string l in log) Console.WriteLine(l);
+                return 1;
+            }
+            charge = g;
+        }
 
         var strings = ImportJob.Plan(args[0], log);
         if (strings.Count == 0)
@@ -29,7 +42,21 @@ public static class ImportCli
             return 1;
         }
 
-        string outPath = ImportJob.Run(args[1], strings.Select(s => (s, charge)), log);
+        string outPath;
+        try
+        {
+            outPath = ImportJob.Run(args[1], strings.Select(s => (s, charge)), log);
+        }
+        catch (Exception ex)
+        {
+            // Ruling F34: GrtLoadDoc.Load(args[1]) runs inside ImportJob.Run before its own
+            // per-string try/catch has a chance to run. Everywhere else in this codebase
+            // reports rather than crashes; a corrupt .grtload should be no different.
+            log.Add($"'{args[1]}': not imported ({ex.Message})");
+            foreach (string l in log) Console.WriteLine(l);
+            return 1;
+        }
+
         foreach (string l in log) Console.WriteLine(l);
         Console.WriteLine($"wrote {outPath}");
         return 0;
