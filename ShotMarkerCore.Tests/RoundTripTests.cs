@@ -23,7 +23,14 @@ public class RoundTripTests
         return SmExportReader.Read(Fixtures.Path("shotmarker/SM_export_Sep_21.tar"), log).First();
     }
 
-    private static (GrtLoadDoc Doc, SmString String, List<string> Log) Import(GrtConfig? cfg = null)
+    /// <summary>
+    /// Every test below writes with this same config and reads back with it, so both halves
+    /// agree by construction and never by accident of whatever GRT install (if any) happens to
+    /// sit beside the machine running the suite (ruling F25). <see cref="Import"/> and
+    /// <see cref="ReadBackAs"/> both take the config as a required argument for exactly that
+    /// reason: neither can silently fall back to <see cref="GrtConfig.Current"/>.
+    /// </summary>
+    private static (GrtLoadDoc Doc, SmString String, List<string> Log) Import(GrtConfig cfg)
     {
         var log = new List<string>();
         SmString s = FirstString();
@@ -37,7 +44,7 @@ public class RoundTripTests
     /// <summary>The shots GRT will keep once flyers are excluded (ruling F1), in written order.</summary>
     private static List<SmShot> Scoring(SmString s) => s.Shots.Where(sh => !sh.IsFlyer).ToList();
 
-    private static GrtShotGroups.Options ReadBackAs(GrtConfig? cfg)
+    private static GrtShotGroups.Options ReadBackAs(GrtConfig cfg)
     {
         var (refUnit, shootUnit) = GrtShotGroups.GrtDefaults(cfg);
         return new GrtShotGroups.Options(refUnit, shootUnit, ExcludeFlyers: true);
@@ -46,9 +53,10 @@ public class RoundTripTests
     [Fact]
     public void EveryShotComesBackWhereItWent()
     {
-        var (doc, s, _) = Import();
+        GrtConfig metric = Metric();
+        var (doc, s, _) = Import(metric);
 
-        var (groups, log) = GrtShotGroups.FromDoc(doc, ReadBackAs(null));
+        var (groups, log) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
         TargetGroup g = Assert.Single(groups);
 
         // FromDoc reports MOA offsets from the centroid, so compare like with like.
@@ -69,8 +77,9 @@ public class RoundTripTests
     [Fact]
     public void TheGroupKeepsItsRealSize()
     {
-        var (doc, s, _) = Import();
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(null));
+        GrtConfig metric = Metric();
+        var (doc, s, _) = Import(metric);
+        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
         TargetGroup g = groups.Single();
 
         double mmPerMoa = GrtShotGroups.MoaMm(s.DistanceMetres);
@@ -90,23 +99,25 @@ public class RoundTripTests
     [Fact]
     public void TheShootingDistanceSurvives()
     {
-        var (doc, s, _) = Import();
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(null));
+        GrtConfig metric = Metric();
+        var (doc, s, _) = Import(metric);
+        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
         Assert.Equal(s.DistanceMetres, groups.Single().DistanceM, 1);
     }
 
     [Fact]
     public void TheChargeSurvivesAsTheLadderStep()
     {
-        var (doc, _, _) = Import();
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(null));
+        GrtConfig metric = Metric();
+        var (doc, _, _) = Import(metric);
+        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
         Assert.Equal(41.5, groups.Single().ChargeGrains!.Value, 3);
     }
 
     [Fact]
     public void SightersAndRejectsComeBackAsFlyers()
     {
-        var (doc, s, _) = Import();
+        var (doc, s, _) = Import(Metric());
         GrtShotGroup tab = doc.ShotGroups().Single();
 
         // Shots with no coordinates (IsInvalid => NaN) are never plotted, by the renderer or
@@ -134,7 +145,8 @@ public class RoundTripTests
         Assert.Equal(RefUnit.Inch, refUnit);
         Assert.Equal(ShootUnit.Yards, shootUnit);
 
-        var (metricDoc, s, _) = Import(null);
+        GrtConfig metric = Metric();
+        var (metricDoc, s, _) = Import(metric);
         var (imperialDoc, _, _) = Import(imperial);
 
         // The two files carry different numbers ... The 25.4 and 0.9144 are spelled out here
@@ -147,7 +159,7 @@ public class RoundTripTests
         Assert.Equal(mTab.ShootDistance / 0.9144, iTab.ShootDistance, 6);
 
         // ... and each is read back by its own GRT to the same real-world group.
-        var (mGroups, _) = GrtShotGroups.FromDoc(metricDoc, ReadBackAs(null));
+        var (mGroups, _) = GrtShotGroups.FromDoc(metricDoc, ReadBackAs(metric));
         var (iGroups, _) = GrtShotGroups.FromDoc(imperialDoc, ReadBackAs(imperial));
 
         Assert.Equal(mGroups.Single().DistanceM, iGroups.Single().DistanceM, 6);
@@ -158,6 +170,15 @@ public class RoundTripTests
             Assert.Equal(a.YMoa, b.YMoa, 6);
         }
     }
+
+    /// <summary>
+    /// An explicit metric GRT install — mm reference distances, metre shooting distances —
+    /// constructed the same way <see cref="AnImperialGrtReadsTheSameGroupBackAtTheSameScale"/>
+    /// builds its own imperial one. Every other test in this file uses this instead of the
+    /// convenience of a null config, precisely so it does not silently become whatever GRT
+    /// install (if any) happens to be sitting beside the machine running the suite (ruling F25).
+    /// </summary>
+    private static GrtConfig Metric() => FakeGrt("refdistance=mm;range=m;oal=mm;velocity=m/s");
 
     /// <summary>A GRT install whose only interesting setting is the one we read.</summary>
     private static GrtConfig FakeGrt(string valueUnits)

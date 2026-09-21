@@ -249,13 +249,18 @@ public class GrtShotGroupWriterTests
     /// The reference points bracket the picture's own horizontal midline, so the millimetres
     /// between them are a number the projection already knows exactly — and GRT recovers the
     /// picture's true mm-per-pixel from them whatever unit it reads the distance in.
+    ///
+    /// <para>Writes with an explicit metric config rather than the default (<c>cfg: null</c>,
+    /// which falls back to <see cref="GrtConfig.Current"/> — whatever real GRT install, if any,
+    /// happens to sit beside the machine running the suite) so the <see cref="RefUnit.Mm"/>
+    /// below is pinned rather than a hope (ruling F25).</para>
     /// </summary>
     [Fact]
     public void TheReferencePointsRecoverThePicturesOwnScale()
     {
         ImportItem item = Item();
         var doc = NewDoc();
-        GrtShotGroupWriter.Add(doc, item, new List<string>());
+        GrtShotGroupWriter.Add(doc, item, new List<string>(), MetricGrt());
         GrtShotGroup tab = doc.ShotGroups().Single();
 
         Assert.Equal(tab.RefP1Y, tab.RefP2Y, 12);     // level: no vertical component at all
@@ -265,5 +270,21 @@ public class GrtShotGroupWriterTests
         TargetProjection p = item.Render.Projection;
         Assert.Equal(p.WidthMm / p.PixelWidth, mmPerPx, 9);
         Assert.Equal(tab.ImageWidth, p.PixelWidth);
+    }
+
+    /// <summary>An explicit metric GRT install, so a test that asserts against a hardcoded
+    /// <see cref="RefUnit.Mm"/> or <see cref="ShootUnit.Meters"/> is not merely hoping that the
+    /// machine running the suite has no real GRT install of its own (ruling F25).</summary>
+    private static GrtConfig MetricGrt()
+    {
+        string dir = Path.Combine(Path.GetTempPath(), "grt-fake-" + Path.GetRandomFileName());
+        Directory.CreateDirectory(dir);
+        try
+        {
+            File.WriteAllText(Path.Combine(dir, "GordonsReloadingTool.cfg"),
+                "ValueUnits=refdistance=mm;range=m;oal=mm;velocity=m/s\n");
+            return GrtConfig.Load(dir)!;
+        }
+        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
     }
 }
