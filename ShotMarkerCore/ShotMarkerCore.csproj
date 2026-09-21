@@ -39,4 +39,15 @@
     <EmbeddedResource Include="Faces\targetfaces.json" LogicalName="ShotMarker.Core.Faces.targetfaces.json" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Ruling F35: Helvetica is a macOS font and does not exist on Windows, where GRT
+         actually runs — SkiaSharp silently substituted some other face there, which the
+         user never approved. Liberation Sans is metric-compatible with Helvetica/Arial and
+         is embedded so the render is byte-identical on every machine. The .txt files
+         (licence, authors) stay out of the assembly; they just live in the repo as the
+         licence obligation. -->
+    <EmbeddedResource Include="Render\Fonts\LiberationSans-Regular.ttf" LogicalName="ShotMarker.Core.Render.Fonts.LiberationSans-Regular.ttf" />
+    <EmbeddedResource Include="Render\Fonts\LiberationSans-Bold.ttf" LogicalName="ShotMarker.Core.Render.Fonts.LiberationSans-Bold.ttf" />
+  </ItemGroup>
+
 </Project>

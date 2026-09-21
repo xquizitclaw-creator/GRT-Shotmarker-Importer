@@ -1,6 +1,7 @@
 using ShotMarker.Core.Faces;
 using ShotMarker.Core.Render;
 using ShotMarker.Core.Sm;
+using SkiaSharp;
 using Xunit;
 
 namespace ShotMarker.Core.Tests;
@@ -113,6 +114,23 @@ public class TargetRendererTests
             Assert.InRange(x, 0, 1);
             Assert.InRange(y, 0, 1);
         }
+    }
+
+    [Theory]
+    [InlineData("ShotMarker.Core.Render.Fonts.LiberationSans-Regular.ttf")]
+    [InlineData("ShotMarker.Core.Render.Fonts.LiberationSans-Bold.ttf")]
+    public void TheEmbeddedFontResourceLoadsAsATypeface(string resourceName)
+    {
+        // Ruling F35: the regression guard for someone later renaming the .ttf file or
+        // changing the csproj's EmbeddedResource entries. Without this, that mistake's
+        // failure mode is silent — TargetRenderer would go back to resolving a platform
+        // font, exactly the defect this fix exists to remove.
+        using Stream? stream = typeof(TargetRenderer).Assembly.GetManifestResourceStream(resourceName);
+        Assert.NotNull(stream);
+
+        using SKTypeface? typeface = SKTypeface.FromStream(stream);
+        Assert.NotNull(typeface);
+        Assert.Equal("Liberation Sans", typeface!.FamilyName);
     }
 
     [Fact]

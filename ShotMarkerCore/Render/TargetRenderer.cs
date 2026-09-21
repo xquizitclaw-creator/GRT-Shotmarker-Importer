@@ -13,6 +13,27 @@ namespace ShotMarker.Core.Render;
 /// </summary>
 public static class TargetRenderer
 {
+    // Ruling F35: Helvetica only exists on macOS. GRT ships on Windows, where SkiaSharp
+    // would silently substitute some other face — a render the user never approved.
+    // Liberation Sans is embedded and loaded once per process so every machine renders the
+    // same bytes forever. A typeface that fails to load is a bug in the build, not a
+    // runtime condition to paper over, so this throws rather than falling back to a family
+    // name — a silent fallback is the exact defect this exists to remove.
+    private static readonly SKTypeface RegularTypeface = LoadEmbeddedTypeface("LiberationSans-Regular.ttf");
+    private static readonly SKTypeface BoldTypeface = LoadEmbeddedTypeface("LiberationSans-Bold.ttf");
+
+    private static SKTypeface LoadEmbeddedTypeface(string fileName)
+    {
+        string resourceName = $"ShotMarker.Core.Render.Fonts.{fileName}";
+        Stream stream = typeof(TargetRenderer).Assembly.GetManifestResourceStream(resourceName)
+            ?? throw new InvalidOperationException($"{resourceName} resource missing");
+        // SKTypeface.FromStream takes ownership of the stream it is given, so it is not
+        // wrapped in a `using` here — these typefaces are static readonly and live for the
+        // process, which is correct; do not dispose them (or their stream) per-render.
+        return SKTypeface.FromStream(stream)
+            ?? throw new InvalidOperationException($"{resourceName} failed to load as a typeface");
+    }
+
     public static RenderedTarget Render(SmString s, TargetFace face, RenderOptions? options = null)
     {
         RenderOptions o = options ?? new RenderOptions();
@@ -150,7 +171,7 @@ public static class TargetRenderer
             {
                 Color = Stroke(t.Color), IsAntialias = true,
                 TextSize = Math.Max(6, p.Px(t.SizeMm)), TextAlign = SKTextAlign.Center,
-                Typeface = SKTypeface.FromFamilyName("Helvetica", SKFontStyle.Normal),
+                Typeface = RegularTypeface,
             };
             c.DrawText(t.Text, x, y + paint.TextSize / 3, paint);
         }
@@ -188,7 +209,7 @@ public static class TargetRenderer
             {
                 Color = SKColors.White, IsAntialias = true,
                 TextSize = discRadius * 1.2f, TextAlign = SKTextAlign.Center,
-                Typeface = SKTypeface.FromFamilyName("Helvetica", SKFontStyle.Bold),
+                Typeface = BoldTypeface,
             };
             c.DrawText(sh.Number.ToString(CultureInfo.InvariantCulture), x, y + label.TextSize / 3, label);
         }
@@ -219,7 +240,7 @@ public static class TargetRenderer
         using var text = new SKPaint
         {
             Color = new SKColor(0x20, 0x20, 0x20), IsAntialias = true, TextSize = 22,
-            Typeface = SKTypeface.FromFamilyName("Helvetica", SKFontStyle.Normal),
+            Typeface = RegularTypeface,
         };
         using var plate = new SKPaint { Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE0), Style = SKPaintStyle.Fill };
         float w = text.MeasureText(stats);
