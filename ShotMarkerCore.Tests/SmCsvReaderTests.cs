@@ -164,4 +164,22 @@ public class SmCsvReaderTests
         var all = Read(out _).SelectMany(s => s.Shots).ToList();
         Assert.DoesNotContain(all, sh => sh.IsInvalid);
     }
+
+    /// <summary>Task 9b test 5: the CSV carries no group-membership information at all, so
+    /// every shot's <see cref="SmShot.InSelectedGroup"/> must be null throughout — never a
+    /// guessed true or false — and <see cref="SmShot.IsFlyer"/> must come out exactly as it
+    /// did before this task (sighter or nothing else), because a null must not turn a shot
+    /// into a flyer.</summary>
+    [Fact]
+    public void CsvReadStringsHaveNoGroupMembershipAndTheSameFlyerResultsAsBeforeThisTask()
+    {
+        var all = Read(out _).SelectMany(s => s.Shots).ToList();
+        Assert.NotEmpty(all);
+        Assert.All(all, sh => Assert.Null(sh.InSelectedGroup));
+        Assert.All(all, sh => Assert.Equal(sh.IsSighter || sh.IsInvalid, sh.IsFlyer));
+        // The fixture is supposed to contain both sighters and record shots — otherwise the
+        // assertion above would hold trivially for every shot being the same kind.
+        Assert.Contains(all, sh => sh.IsSighter);
+        Assert.Contains(all, sh => !sh.IsSighter);
+    }
 }
