@@ -1,3 +1,8 @@
+using System.Formats.Tar;
+using System.IO.Compression;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Nodes;
 using ShotMarker.Core.Sm;
 using Xunit;
 
@@ -74,5 +79,84 @@ public class SmTarReaderTests
         var strings = SmTarReader.Read(cut, log);
         Assert.NotEmpty(log);
         Assert.All(strings, s => Assert.NotEmpty(s.Shots));
+    }
+
+    [Fact]
+    public void DecodesShotsInvalidEntriesAsRejectedShotsRatherThanTreatingThemAsIndices()
+    {
+        // shots_invalid is a parallel array of rejected/deleted shots, each encoded exactly
+        // like `shots` — not a list of indices into `shots`. The committed fixture's
+        // shots_invalid is always empty, so this builds a small synthetic archive: a real
+        // encoded shot string taken from the fixture (shot 0 of the first string — a
+        // sighter with known ground-truth coordinates, per task-4-decoder-reference.md's
+        // expected-output table) placed in shots_invalid with an otherwise-empty `shots`.
+        string encodedShot = FirstEncodedShotFromFixture();
+
+        var body = new JsonObject
+        {
+            ["name"] = "synthetic",
+            ["ts"] = 0,
+            ["face_id"] = "X",
+            ["dist"] = 100,
+            ["dist_unit"] = "m",
+            ["width"] = 10,
+            ["height"] = 10,
+            ["bullet"] = null,
+            ["score_string"] = "",
+            ["encoded"] = true,
+            ["shots"] = new JsonArray(),
+            ["shots_invalid"] = new JsonArray(encodedShot),
+            ["groups"] = new JsonObject(),
+        };
+
+        using var tar = new MemoryStream();
+        using (var writer = new TarWriter(tar, TarEntryFormat.Pax, leaveOpen: true))
+        {
+            using var compressed = new MemoryStream();
+            using (var zs = new ZLibStream(compressed, CompressionLevel.Fastest, leaveOpen: true))
+            {
+                byte[] utf8 = Encoding.UTF8.GetBytes(body.ToJsonString());
+                zs.Write(utf8, 0, utf8.Length);
+            }
+            var entry = new PaxTarEntry(TarEntryType.RegularFile, "string-9999999999999.z")
+            {
+                DataStream = new MemoryStream(compressed.ToArray()),
+            };
+            writer.WriteEntry(entry);
+        }
+        tar.Position = 0;
+
+        var log = new List<string>();
+        var strings = SmTarReader.Read(tar, log);
+
+        SmString s = Assert.Single(strings);
+        SmShot shot = Assert.Single(s.Shots);
+        Assert.True(shot.IsInvalid);
+        Assert.Equal(1, shot.Number);
+        Assert.Equal(478.6, shot.XMm, 1);
+        Assert.Equal(-227.3, shot.YMm, 1);
+        Assert.NotNull(shot.VelocityMps);
+        Assert.Equal(570.6, shot.VelocityMps!.Value, 1);
+    }
+
+    private static string FirstEncodedShotFromFixture()
+    {
+        using FileStream fs = File.OpenRead(Fixtures.Path("shotmarker/SM_export_Sep_21.tar"));
+        using var reader = new TarReader(fs);
+        while (reader.GetNextEntry() is { } entry)
+        {
+            if (!entry.Name.StartsWith("string-", StringComparison.Ordinal) || entry.DataStream is null)
+                continue;
+            using var raw = new MemoryStream();
+            entry.DataStream.CopyTo(raw);
+            raw.Position = 0;
+            using var zs = new ZLibStream(raw, CompressionMode.Decompress);
+            using var json = new MemoryStream();
+            zs.CopyTo(json);
+            json.Position = 0;
+            using JsonDocument doc = JsonDocument.Parse(json);
+            return doc.RootElement.GetProperty("shots")[0].GetString()!;
+        }
+        throw new InvalidOperationException("no string-*.z entry found in fixture");
     }
 }

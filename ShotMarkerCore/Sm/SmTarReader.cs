@@ -108,10 +108,19 @@ public static class SmTarReader
         bool encoded = root.TryGetProperty("encoded", out JsonElement encEl)
                        && encEl.ValueKind == JsonValueKind.True;
 
-        HashSet<string> invalidIds = InvalidIds(root);
         List<SmShot> shots = encoded
-            ? ReadEncodedShots(root, invalidIds, log, id)
-            : ReadPlainShots(root, invalidIds);
+            ? ReadEncodedShots(root, log, id)
+            : ReadPlainShots(root);
+
+        // shots_invalid is NOT a list of indices into `shots` — it is a parallel array of
+        // rejected/deleted shots, each either an encoded string (decoded exactly like
+        // `shots`, via the same decode_shot) or already a decoded object, per the bundle's
+        // decode_shot_frame: `"string"==typeof e[t] && (e[t]=decode_shot(e[t]))` applied to
+        // both `shots` and `shots_invalid`. They are appended after the valid shots and
+        // always marked IsInvalid — simpler and just as usable downstream as interleaving
+        // by timestamp, since IsInvalid/IsFlyer is how callers are expected to filter them
+        // out rather than relying on position.
+        AppendInvalidShots(root, shots, log, id);
 
         if (shots.Count == 0) { log.Add($"{id}: no shots — skipped"); return null; }
 
@@ -135,7 +144,7 @@ public static class SmTarReader
     // ---- encoded path (the fixture's format) -----------------------------------------
 
     private static List<SmShot> ReadEncodedShots(
-        JsonElement root, HashSet<string> invalidIds, IList<string> log, string stringId)
+        JsonElement root, IList<string> log, string stringId)
     {
         var shots = new List<SmShot>();
         if (!root.TryGetProperty("shots", out JsonElement arr) || arr.ValueKind != JsonValueKind.Array)
@@ -171,9 +180,7 @@ public static class SmTarReader
                             (recordScores.TryGetValue(recordOrdinal, out string? rv) ? rv : null);
                 }
 
-                bool erroredOrFake = d.Fake || d.ErrorCode is not (null or 0);
-                bool listedInvalid = invalidIds.Contains(rawIndex.ToString(CultureInfo.InvariantCulture));
-                bool invalid = erroredOrFake || listedInvalid;
+                bool invalid = d.Fake || d.ErrorCode is not (null or 0);
 
                 // A shot that errored on the device (d.ErrorCode != 0) or is a "fake" entry
                 // never had coordinates decoded — NaN rather than (0,0) so a caller that
@@ -191,6 +198,55 @@ public static class SmTarReader
             }
         }
         return shots;
+    }
+
+    /// <summary>Decodes <c>shots_invalid</c> — rejected/deleted shots, structurally a second
+    /// shot array rather than an index list — and appends them to <paramref name="shots"/>,
+    /// continuing its <see cref="SmShot.Number"/> sequence. Each entry is either an encoded
+    /// string (same format and decoder as <c>shots</c>) or, per the bundle's own
+    /// <c>typeof e[t] == "string"</c> guard, already a decoded plain object; either shape is
+    /// handled. A malformed entry is logged and skipped, never thrown.</summary>
+    private static void AppendInvalidShots(
+        JsonElement root, List<SmShot> shots, IList<string> log, string stringId)
+    {
+        if (!root.TryGetProperty("shots_invalid", out JsonElement arr) || arr.ValueKind != JsonValueKind.Array)
+            return;
+
+        int i = -1;
+        foreach (JsonElement el in arr.EnumerateArray())
+        {
+            i++;
+            try
+            {
+                switch (el.ValueKind)
+                {
+                    case JsonValueKind.String:
+                        DecodedShot d = DecodeShot(el.GetString() ?? "");
+                        shots.Add(new SmShot(
+                            shots.Count + 1,
+                            d.XMm ?? double.NaN, d.YMm ?? double.NaN,
+                            d.VelocityMps, d.ScoreOverride, d.TempC,
+                            d.Sighter, true));
+                        break;
+                    case JsonValueKind.Object:
+                        shots.Add(new SmShot(
+                            shots.Count + 1,
+                            Num(el, "x") ?? double.NaN, Num(el, "y") ?? double.NaN,
+                            Num(el, "v"), Str(el, "score"), Num(el, "temp"),
+                            Str(el, "display_text")?.Contains("sighter", StringComparison.OrdinalIgnoreCase)
+                                == true,
+                            true));
+                        break;
+                    default:
+                        log.Add($"{stringId}: shots_invalid[{i}] has unexpected shape ({el.ValueKind}) — skipped");
+                        break;
+                }
+            }
+            catch (Exception ex)
+            {
+                log.Add($"{stringId}: shots_invalid[{i}] unreadable ({ex.Message}) — skipped");
+            }
+        }
     }
 
     private readonly record struct DecodedShot(
@@ -311,7 +367,7 @@ public static class SmTarReader
 
     // ---- unencoded fallback path (kept per the brief, not exercised by the fixture) --
 
-    private static List<SmShot> ReadPlainShots(JsonElement root, HashSet<string> invalidIds)
+    private static List<SmShot> ReadPlainShots(JsonElement root)
     {
         var shots = new List<SmShot>();
         foreach (JsonElement g in Groups(root))
@@ -329,7 +385,7 @@ public static class SmTarReader
                     shots.Count + 1,
                     Num(sh, "x") ?? 0, Num(sh, "y") ?? 0,
                     Num(sh, "v"), Str(sh, "score"), Num(sh, "temp"),
-                    sighter, invalidIds.Contains(Str(sh, "id") ?? "")));
+                    sighter, false));
             }
         }
         return shots;
@@ -352,20 +408,17 @@ public static class SmTarReader
         };
     }
 
+    /// <summary>Group statistics are ShotMarker's own precomputed numbers, read straight off
+    /// the <c>groups</c> JSON — never derived from <see cref="SmShot"/> values in this reader.
+    /// So the <c>double.NaN</c> sentinel used for an errored/fake shot's coordinates (see
+    /// <see cref="ReadEncodedShots"/> and <see cref="AppendInvalidShots"/>) cannot reach here;
+    /// there is no local min/max/average/bounds computation over <c>shots</c> anywhere in this
+    /// file for it to poison.</summary>
     private static SmGroupStats? ReadStats(JsonElement root) => Groups(root).Select(ReadStatsFrom).FirstOrDefault();
 
     private static SmGroupStats ReadStatsFrom(JsonElement g) => new(
         Num(g, "mr"), Num(g, "size"), Num(g, "ctc"),
         Num(g, "v_avg"), Num(g, "v_sd"), Num(g, "v_es"));
-
-    private static HashSet<string> InvalidIds(JsonElement root)
-    {
-        var set = new HashSet<string>(StringComparer.Ordinal);
-        if (root.TryGetProperty("shots_invalid", out JsonElement inv) && inv.ValueKind == JsonValueKind.Array)
-            foreach (JsonElement e in inv.EnumerateArray())
-                set.Add(e.ValueKind == JsonValueKind.String ? e.GetString()! : e.ToString());
-        return set;
-    }
 
     private static DateTimeOffset Timestamp(JsonElement root) =>
         Num(root, "ts") is { } ms
