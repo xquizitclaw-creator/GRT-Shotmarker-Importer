@@ -48,6 +48,17 @@ public static class GrtShotGroupWriter
     private const double RefInset = 0.1;
 
     /// <summary>
+    /// The sibling family generated loads belong to. Each plugin keeps its own, because
+    /// GrtLoadDoc prunes a family to its three newest: sharing the toolkit's would let the
+    /// toolkit delete this plugin's output, and this plugin the toolkit's.
+    /// </summary>
+    public const string SiblingFamily = "shotmarker";
+
+    /// <summary>Saves the load beside the user's original as this plugin's own sibling, and
+    /// returns the path written. The one supported way to save what this writer produced.</summary>
+    public static string Save(GrtLoadDoc doc) => doc.SaveSibling("shotmarker", SiblingFamily);
+
+    /// <summary>
     /// Millimetres expressed in the unit GRT will read a shot-group reference distance in —
     /// the exact inverse of <see cref="GrtShotGroups.RefToMm"/>, which is the function that
     /// will undo it.
@@ -191,7 +202,13 @@ public static class GrtShotGroupWriter
         if (s.Stats is { } st)
         {
             lines.Add("");
-            lines.Add("ShotMarker's own figures:");
+            // Deliberately not "for these shots". ShotMarker computes these for the group the
+            // user had selected on the device, which need not be every scoring shot in the
+            // string: in fixture SM_export_Sep_21.tar the string has 20 record shots and the
+            // group has 19, so GRT's own analysis of this tab reads 406 mm where ShotMarker
+            // says 336 mm. Both are right about different shot sets; the note should not
+            // pretend otherwise. Group membership is not carried on SmString.
+            lines.Add("ShotMarker's own figures, for the group it had selected:");
             if (st.GroupSizeMm is { } g) lines.Add($"  group size    {g.ToString("0.0", ic)} mm");
             if (st.MeanRadiusMm is { } mr) lines.Add($"  mean radius   {mr.ToString("0.0", ic)} mm");
             if (st.CtcMm is { } ctc) lines.Add($"  centre-centre {ctc.ToString("0.0", ic)} mm");

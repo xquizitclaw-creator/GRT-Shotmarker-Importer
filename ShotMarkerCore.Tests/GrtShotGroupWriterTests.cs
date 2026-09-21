@@ -119,8 +119,9 @@ public class GrtShotGroupWriterTests
         {
             var doc = GrtLoadDoc.CreateMinimal("t", Path.Combine(dir, "MyLoad.grtload"));
             GrtShotGroupWriter.Add(doc, Item(), new List<string>());
-            string outPath = doc.SaveSibling("shotmarker", family: "shotmarker");
+            string outPath = GrtShotGroupWriter.Save(doc);
 
+            Assert.Equal("shotmarker", GrtShotGroupWriter.SiblingFamily);
             Assert.Contains("_shotmarker_", Path.GetFileName(outPath));
             Assert.DoesNotContain("_toolkit_", Path.GetFileName(outPath));
             Assert.True(GrtLoadDoc.LooksLikeGeneratedSibling(outPath));
