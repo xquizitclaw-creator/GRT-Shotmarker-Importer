@@ -166,9 +166,14 @@ public static class TargetRenderer
         foreach (SmShot sh in shots)
         {
             var (x, y) = p.ToPixel(sh.XMm, sh.YMm);
+            // Styling is settled (task 9b, section 6): sighters red, record shots orange —
+            // deliberately sh.IsSighter, not sh.IsFlyer. IsFlyer now also covers a record
+            // shot ShotMarker's own group left out (SmShot.InSelectedGroup == false), and
+            // excluding a shot from the statistics is not a reason to draw it differently;
+            // it still gets its numbered orange disc like every other record shot.
             using var fill = new SKPaint
             {
-                Color = sh.IsFlyer ? new SKColor(0xD0, 0x30, 0x30) : new SKColor(0xF0, 0x70, 0x20),
+                Color = sh.IsSighter ? new SKColor(0xD0, 0x30, 0x30) : new SKColor(0xF0, 0x70, 0x20),
                 Style = SKPaintStyle.Fill, IsAntialias = true,
             };
             using var edge = new SKPaint
@@ -191,8 +196,9 @@ public static class TargetRenderer
 
     private static void DrawFurniture(SKCanvas c, TargetProjection p, SmString s)
     {
-        // !IsFlyer already excludes IsInvalid (IsFlyer => IsSighter || IsInvalid), so this
-        // group box never touches a NaN coordinate either.
+        // !IsFlyer always excludes IsInvalid (IsFlyer => IsSighter || IsInvalid || ...), so
+        // this group box never touches a NaN coordinate either — whatever else IsFlyer comes
+        // to include over time (task 9b added InSelectedGroup == false).
         var scoring = s.Shots.Where(sh => !sh.IsFlyer).ToList();
         if (scoring.Count == 0) return;
 
