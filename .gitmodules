@@ -1,0 +1,3 @@
+[submodule "external/GRT-Reloading-Toolkit"]
+	path = external/GRT-Reloading-Toolkit
+	url = https://github.com/FREESHOTER/GRT-Reloading-Toolkit.git

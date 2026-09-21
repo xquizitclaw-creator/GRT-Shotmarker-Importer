@@ -1,0 +1,28 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShotMarkerCore", "ShotMarkerCore\ShotMarkerCore.csproj", "{4F714B75-9E9D-402A-8CEA-ABEB58E1FD08}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShotMarkerCore.Tests", "ShotMarkerCore.Tests\ShotMarkerCore.Tests.csproj", "{FE0D2DE9-C1F9-47CC-86BE-2113998E6617}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{4F714B75-9E9D-402A-8CEA-ABEB58E1FD08}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4F714B75-9E9D-402A-8CEA-ABEB58E1FD08}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4F714B75-9E9D-402A-8CEA-ABEB58E1FD08}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4F714B75-9E9D-402A-8CEA-ABEB58E1FD08}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FE0D2DE9-C1F9-47CC-86BE-2113998E6617}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FE0D2DE9-C1F9-47CC-86BE-2113998E6617}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FE0D2DE9-C1F9-47CC-86BE-2113998E6617}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FE0D2DE9-C1F9-47CC-86BE-2113998E6617}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+EndGlobal
