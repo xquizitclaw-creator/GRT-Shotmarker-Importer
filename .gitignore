@@ -7,3 +7,8 @@ dist/
 # whole publish output - exe, DLLs, PDBs - into a public repo on the next `git add -A`.
 artifacts/
 .superpowers/
+
+# ShotMarker's own web bundle. Kept locally — tools/extract-targetfaces.js reads it to
+# regenerate targetfaces.json — but it is ShotMarker's copyrighted code and this repo is
+# public, so it must never be committed. Ruling F31.
+fixtures/shotmarker/bundle/
