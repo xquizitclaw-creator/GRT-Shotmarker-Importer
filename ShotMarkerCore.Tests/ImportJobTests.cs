@@ -83,6 +83,49 @@ public class ImportJobTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    /// <summary>
+    /// The WinForms shell (task 11) pairs a ticked grid row with its charge by carrying the
+    /// <c>SmString</c> on the row rather than by list position, because the grid can be
+    /// re-sorted by the user and a positional pairing would then attach the wrong charge to
+    /// the wrong string. That contract is really "the (SmString, charge) tuple ImportJob.Run
+    /// receives determines the pairing, not Plan()'s original order" — provable here even
+    /// though the form itself is not unit-testable.
+    /// </summary>
+    [Fact]
+    public void ChargesLandOnTheRightStringEvenOutOfPlansOriginalOrder()
+    {
+        string dir = Directory.CreateTempSubdirectory().FullName;
+        try
+        {
+            string load = TempLoad(dir);
+            var log = new List<string>();
+            var strings = ImportJob.Plan(Fixtures.Path("shotmarker/SM_export_Sep_21.tar"), log);
+            Assert.True(strings.Count >= 2, "fixture needs at least two strings for this test to mean anything");
+
+            var chargeByName = strings
+                .Select((s, i) => (s.Name, Charge: 40.0 + i))
+                .ToDictionary(x => x.Name, x => x.Charge);
+
+            // Selected in the REVERSE of Plan()'s order — a positional pairing (row index i ->
+            // strings[i]) would silently swap the charges here.
+            var selected = strings
+                .Reverse()
+                .Select(s => (s, (double?)chargeByName[s.Name]))
+                .ToList();
+
+            string outPath = ImportJob.Run(load, selected, log);
+            var doc = GrtLoadDoc.Load(outPath);
+
+            foreach (SmString s in strings)
+            {
+                GrtShotGroup group = doc.ShotGroups().Single(g => g.Title == $"ShotMarker — {s.Name}");
+                string expected = chargeByName[s.Name].ToString("0.0#", System.Globalization.CultureInfo.InvariantCulture) + " gr";
+                Assert.Equal(expected, group.Groups.Single().Name);
+            }
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     [Fact]
     public void WithNoLoadToWriteIntoOneIsCreated()
     {

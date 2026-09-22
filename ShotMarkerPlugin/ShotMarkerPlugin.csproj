@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- The standard, Microsoft-documented switch for compiling a net*.0-windows project on a
+         non-Windows machine: it suppresses NETSDK1100 ("this project cannot be built on the
+         current OS") so `dotnet build`/`dotnet test` of the whole solution can succeed on any
+         dev machine or CI runner whose SDK carries the Windows Desktop targeting pack (the
+         official installer does). It is compile-only and changes nothing about how the exe
+         behaves when actually run on Windows.
+
+         It does NOT help if that SDK component is missing outright rather than merely refusing
+         non-Windows targeting — confirmed against a Homebrew `dotnet@8` install, whose Sdks/
+         folder has no Microsoft.NET.Sdk.WindowsDesktop at all, so evaluating this project there
+         still fails (MSB4019, before NETSDK1100 would even get a chance to fire). -->
+    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <RootNamespace>ShotMarker.Plugin</RootNamespace>
+    <AssemblyName>GRT_ShotMarker</AssemblyName>
+    <Deterministic>true</Deterministic>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ShotMarkerCore\ShotMarkerCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="plugin\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>
