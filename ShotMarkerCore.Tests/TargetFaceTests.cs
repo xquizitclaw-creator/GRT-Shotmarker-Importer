@@ -1,6 +1,10 @@
+using System;
 using System.Globalization;
 using System.Linq;
 using ShotMarker.Core.Faces;
+using ShotMarker.Core.Render;
+using ShotMarker.Core.Sm;
+using SkiaSharp;
 using Xunit;
 
 namespace ShotMarker.Core.Tests;
@@ -82,5 +86,60 @@ public class TargetFaceTests
                                       && Math.Abs(Math.Abs(p.Points[0].XMm - p.Points[1].XMm) - stated) < 1e-9
                                       && p.Points[0].YMm == p.Points[1].YMm);
         Assert.True(stated <= g.BoardWidthMm * 0.25, "the scale bar must fit well inside the board");
+    }
+
+    /// <summary>The model above says the furniture exists; this says it is visible. Both are
+    /// needed. The first version of that model-only test passed against a face whose polys
+    /// carried colour "b" — which the renderer draws as a zero-area FILL, and whose label it
+    /// strokes white on a white board. Every assertion above held and the rendered picture was
+    /// blank. Only a pixel can tell those two apart.</summary>
+    [Fact]
+    public void TheGenericFacesFurnitureActuallyRendersAsVisibleInk()
+    {
+        TargetFace g = TargetFaceLibrary.Generic(1887, 1908);
+        var s = new SmString("s1", "empty", DateTimeOffset.UnixEpoch, "GENERIC", 300, "yd",
+                             1887, 1908, 7.82, null, Array.Empty<SmShot>(), null);
+
+        var r = TargetRenderer.Render(s, g, new RenderOptions(DrawFurniture: false));
+        using SKBitmap bmp = SKBitmap.Decode(r.Png);
+
+        double arm = Math.Min(1887, 1908) * 0.04;
+        Assert.True(DarkPixels(bmp, r.Projection, -arm, 0, arm, 0) > 0, "horizontal cross arm drew nothing");
+        Assert.True(DarkPixels(bmp, r.Projection, 0, -arm, 0, arm) > 0, "vertical cross arm drew nothing");
+
+        // The bar, its end ticks and the label, taken as one box across the bottom-left
+        // corner where Generic() puts them.
+        TargetPoly bar = g.Polys.Last(p => p.Points.Count == 2 && p.Points[0].YMm == p.Points[1].YMm);
+        TargetText label = Assert.Single(g.Texts);
+        Assert.True(
+            DarkPixels(bmp, r.Projection,
+                       bar.Points[0].XMm, bar.Points[0].YMm,
+                       bar.Points[1].XMm, label.YMm + label.SizeMm) > 0,
+            "scale bar and its label drew nothing");
+    }
+
+    /// <summary>Counts pixels darker than mid-grey inside an mm-space box. The board is white
+    /// and its own edge lies on the canvas border, so anything dark inside is furniture.</summary>
+    private static int DarkPixels(SKBitmap bmp, TargetProjection p,
+                                  double x1Mm, double y1Mm, double x2Mm, double y2Mm)
+    {
+        var (fx1, fy1) = p.ToFraction(Math.Min(x1Mm, x2Mm), Math.Max(y1Mm, y2Mm));
+        var (fx2, fy2) = p.ToFraction(Math.Max(x1Mm, x2Mm), Math.Min(y1Mm, y2Mm));
+
+        // Two pixels of slack: a 1 px stroke centred on the mathematical line can land just
+        // outside a box drawn exactly on that line.
+        int left = Math.Max(0, (int)(fx1 * bmp.Width) - 2);
+        int top = Math.Max(0, (int)(fy1 * bmp.Height) - 2);
+        int right = Math.Min(bmp.Width - 1, (int)(fx2 * bmp.Width) + 2);
+        int bottom = Math.Min(bmp.Height - 1, (int)(fy2 * bmp.Height) + 2);
+
+        int dark = 0;
+        for (int y = top; y <= bottom; y++)
+            for (int x = left; x <= right; x++)
+            {
+                SKColor c = bmp.GetPixel(x, y);
+                if ((c.Red + c.Green + c.Blue) / 3 < 128) dark++;
+            }
+        return dark;
     }
 }

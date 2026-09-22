@@ -274,18 +274,20 @@ public static class SmTarReader
 
         long ts = 16777216 * Decode64(c.Take(3)) + Decode64(c.Take(4));
 
-        // The vendor reads four flags from this byte — 1 simulated, 2 hide, 4 sighter, 8 off —
-        // and every one of its statistics functions (calc_group_size, calc_string_velocity,
-        // calc_string_sd, calc_group_stats) excludes hide, off and fake alike. A shot carrying
-        // any of them is one the device is not counting: the spec's `display: false` case.
-        // Keeping only `sighter` imported a hidden cross-fire or an off-target shot as an
-        // ordinary scoring hit whenever the export had no selected group to contradict it.
+        // The vendor reads four flags from this byte — 1 simulated, 2 hide, 4 sighter, 8 off.
+        // Its statistics functions (calc_group_size, calc_string_velocity, calc_string_sd,
+        // calc_group_stats, calc_valid_shot_count) all exclude hide, sighter, fake, delay and
+        // off; `simulated` appears in none of them. Bit 1 is therefore read and deliberately
+        // NOT excluded — the binding requirement is that GRT measure the shots ShotMarker
+        // measured, and dropping a simulated shot would make GRT's group smaller than the
+        // device's for the same string. Keeping only `sighter` had the opposite fault: a
+        // hidden cross-fire or an off-target shot came in as an ordinary scoring hit whenever
+        // the export had no selected group to contradict it.
         long f1 = c.Byte();
-        bool simulated = (f1 & 1) != 0;
         bool hidden = (f1 & 2) != 0;
         bool sighter = (f1 & 4) != 0;
         bool offTarget = (f1 & 8) != 0;
-        bool excluded = simulated || hidden || offTarget;
+        bool excluded = hidden || offTarget;
 
         long f2 = c.Byte();
         bool fake = (f2 & 8) != 0;

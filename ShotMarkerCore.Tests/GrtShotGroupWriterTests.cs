@@ -225,12 +225,13 @@ public class GrtShotGroupWriterTests
     }
 
     /// <summary>
-    /// F28: the note's "Shots: N (K sighter/invalid)" label must count exactly what it names.
-    /// Task 9b widened <see cref="SmShot.IsFlyer"/> to also cover a valid record shot
+    /// F28: the note's "Shots: N (K sighter/invalid/excluded)" label must count exactly what
+    /// it names. Task 9b widened <see cref="SmShot.IsFlyer"/> to also cover a valid record shot
     /// ShotMarker's own group left out, so counting <c>IsFlyer</c> here (as the line used to)
-    /// would claim M1 R2 TT11 has six sighter/invalid shots when it has five. That sixth shot
-    /// is shot 11 — genuine and scoring — already reported honestly, and separately, by the
-    /// "{inGroup} of {recordShots} record shots" line pinned below.
+    /// would claim M1 R2 TT11 has six such shots when it has five. That sixth shot is shot 11 —
+    /// genuine and scoring — already reported honestly, and separately, by the
+    /// "{inGroup} of {recordShots} record shots" line pinned below. Device-excluded shots ARE
+    /// counted here, because that second line only exists when the export carries a group.
     /// </summary>
     [Fact]
     public void TheShotCountLabelCountsExactlyWhatItNames()
@@ -242,7 +243,7 @@ public class GrtShotGroupWriterTests
         {
             doc.Save(path);
             string text = NoteText(path);
-            Assert.Contains("(5 sighter/invalid)", text);
+            Assert.Contains("(5 sighter/invalid/excluded)", text);
             Assert.Contains("19 of 20 record shots", text);
         }
         finally { File.Delete(path); }

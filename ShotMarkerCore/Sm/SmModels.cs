@@ -6,9 +6,12 @@ namespace ShotMarker.Core.Sm;
 /// selected. Null when the source does not say — the CSV export carries no group
 /// information.</param>
 /// <param name="IsExcludedOnDevice">The shooter (or the device) marked this shot as one that
-/// does not count: hidden, off-target or simulated. It still has real coordinates and is still
-/// drawn — ShotMarker greys it rather than removing it — but none of ShotMarker's own group or
-/// velocity statistics include it.</param>
+/// does not count: hidden or off-target. It still has real coordinates, so this plugin plots
+/// it, but none of ShotMarker's own group or velocity statistics include it. (How the device
+/// itself treats it varies — a hidden shot is greyed, an off-target one is suppressed unless
+/// off_target_mode is "show" — which is why the decision here rests on the statistics
+/// functions rather than on what the screen does.) A `simulated` shot is deliberately NOT
+/// covered: ShotMarker's statistics count it, so this plugin counts it too.</param>
 public sealed record SmShot(
     int Number, double XMm, double YMm, double? VelocityMps,
     string? Score, double? TempC, bool IsSighter, bool IsInvalid,

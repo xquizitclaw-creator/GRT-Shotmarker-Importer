@@ -65,3 +65,10 @@ bundle. This only matters if ShotMarker adds or changes a target face.
 The design document behind this plugin — export formats, coordinate mapping, the plugin
 architecture and how it talks to GRT — is at
 [`docs/superpowers/specs/2026-09-21-shotmarker-import-design.md`](docs/superpowers/specs/2026-09-21-shotmarker-import-design.md).
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).
+
+The licence covers this plugin's own code only. ShotMarker's web bundle is not redistributed
+here (see above), and Gordon's Reloading Tool is a separate product under its own terms.

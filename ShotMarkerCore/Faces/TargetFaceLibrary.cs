@@ -53,11 +53,15 @@ public static class TargetFaceLibrary
         double h = heightMm > 0 ? heightMm : 1000;
         double span = Math.Min(w, h);
 
+        // "bl", not "b". The renderer reads the trailing "l" as "line only": a "b" poly is
+        // drawn as a FILL, and these are two-point paths with zero area, so they would draw
+        // nothing at all; and Stroke("b") is white, so a "b" label would be white on a white
+        // board. Both mistakes are silent — the face still loads and the PNG still renders.
         double arm = span * 0.04;
         var cross = new[]
         {
-            new TargetPoly("b", 1, new[] { new TargetPoint(-arm, 0), new TargetPoint(arm, 0) }),
-            new TargetPoly("b", 1, new[] { new TargetPoint(0, -arm), new TargetPoint(0, arm) }),
+            new TargetPoly("bl", 1, new[] { new TargetPoint(-arm, 0), new TargetPoint(arm, 0) }),
+            new TargetPoly("bl", 1, new[] { new TargetPoint(0, -arm), new TargetPoint(0, arm) }),
         };
 
         // The longest round length that still fits comfortably across the board, so the bar
@@ -71,13 +75,13 @@ public static class TargetFaceLibrary
         double tick = span * 0.012;
         var scale = new[]
         {
-            new TargetPoly("b", 1, new[] { new TargetPoint(x0, y0), new TargetPoint(x0 + bar, y0) }),
-            new TargetPoly("b", 1, new[] { new TargetPoint(x0, y0 - tick), new TargetPoint(x0, y0 + tick) }),
-            new TargetPoly("b", 1, new[] { new TargetPoint(x0 + bar, y0 - tick), new TargetPoint(x0 + bar, y0 + tick) }),
+            new TargetPoly("bl", 1, new[] { new TargetPoint(x0, y0), new TargetPoint(x0 + bar, y0) }),
+            new TargetPoly("bl", 1, new[] { new TargetPoint(x0, y0 - tick), new TargetPoint(x0, y0 + tick) }),
+            new TargetPoly("bl", 1, new[] { new TargetPoint(x0 + bar, y0 - tick), new TargetPoint(x0 + bar, y0 + tick) }),
         };
 
         var label = new TargetText(
-            x0 + bar / 2, y0 + tick + span * 0.025, span * 0.03, "b",
+            x0 + bar / 2, y0 + tick + span * 0.025, span * 0.03, "bl",
             bar.ToString("0", CultureInfo.InvariantCulture) + " mm");
 
         return new TargetFace("GENERIC", "Unknown target", "Unknown", w, h, 2,

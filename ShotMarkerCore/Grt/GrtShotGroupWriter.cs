@@ -203,11 +203,17 @@ public static class GrtShotGroupWriter
             $"Shot:       {s.Timestamp:yyyy-MM-dd HH:mm}",
             $"Distance:   {s.DistanceValue.ToString("0", ic)} {s.DistanceUnit}",
             $"Face:       {s.FaceId}",
-            // Counts what the label says. IsFlyer is wider since task 9b (it now also covers a
-            // valid record shot ShotMarker's own group left out), and that shot is reported
-            // honestly and separately by the "{inGroup} of {recordShots} record shots" line
-            // below — counting it here too would make this line lie about the user's data.
-            $"Shots:      {s.Shots.Count} ({s.Shots.Count(sh => sh.IsSighter || sh.IsInvalid)} sighter/invalid)",
+            // Counts what the label says. IsFlyer is wider still (it also covers a valid
+            // record shot ShotMarker's own group left out), and that shot is reported honestly
+            // and separately by the "{inGroup} of {recordShots} record shots" line below —
+            // counting it here too would make this line lie about the user's data. But a shot
+            // the DEVICE excluded (hidden, off-target) has no such second line to report it:
+            // that line only appears when the export carries a group at all, so without one a
+            // struck-out cross-fire vanished from both — "Shots: 20 (2 sighter/invalid)"
+            // printed beside a GRT group of 17, with nothing naming the missing three.
+            $"Shots:      {s.Shots.Count} " +
+            $"({s.Shots.Count(sh => sh.IsSighter || sh.IsInvalid || sh.IsExcludedOnDevice)} " +
+            "sighter/invalid/excluded)",
         };
         if (s.ScoreText is { Length: > 0 }) lines.Add($"Score:      {s.ScoreText}");
         if (s.Stats is { } st)

@@ -386,13 +386,12 @@ public class SmTarReaderTests
     }
 
     /// <summary>The flag byte carries four flags — 1 simulated, 2 hide, 8 off, alongside
-    /// 4 sighter — and every one of ShotMarker's own statistics functions excludes hide, off
-    /// and fake alike. Such a shot keeps its real coordinates (the device greys it rather than
-    /// removing it) but must not count. This is asserted with NO group present, because that
-    /// is the case where group membership cannot launder the flag: <c>InSelectedGroup</c> is
-    /// null for every shot, so <c>IsFlyer</c> here can only come from the flag itself.</summary>
+    /// 4 sighter. Every one of ShotMarker's own statistics functions excludes hide and off
+    /// (and fake, and sighter), so a shot carrying either keeps its real coordinates but must
+    /// not count. This is asserted with NO group present, because that is the case where group
+    /// membership cannot launder the flag: <c>InSelectedGroup</c> is null for every shot, so
+    /// <c>IsFlyer</c> here can only come from the flag itself.</summary>
     [Theory]
-    [InlineData(1)] // simulated — a shot that was never fired
     [InlineData(2)] // hide — the shooter struck it out, e.g. a cross-fire
     [InlineData(8)] // off — off target
     public void AShotTheDeviceMarksAsNotCountingIsStillPlottedButNeverCounted(int bit)
@@ -405,6 +404,22 @@ public class SmTarReaderTests
         Assert.True(shot.IsFlyer);
         Assert.False(shot.IsInvalid);
         Assert.False(double.IsNaN(shot.XMm)); // still drawable, as ShotMarker draws it
+    }
+
+    /// <summary>Bit 1 is the odd one out. `simulated` is read by the vendor's decode_shot but
+    /// is excluded by none of its statistics functions — not calc_group_size, not
+    /// calc_string_velocity, not calc_string_sd, not calc_group_stats, not
+    /// calc_valid_shot_count; it only reaches display colouring. Excluding it here would make
+    /// GRT's group smaller than the group ShotMarker reports for the same string, which is the
+    /// one thing this importer exists not to do.</summary>
+    [Fact]
+    public void ASimulatedShotStillCountsBecauseShotMarkersOwnStatisticsCountIt()
+    {
+        SmShot shot = Assert.Single(
+            ReadOneSyntheticShot(WithFlagBit(EncodedShotFromFixture(5), 1), new List<string>()));
+
+        Assert.False(shot.IsExcludedOnDevice);
+        Assert.False(shot.IsFlyer);
     }
 
     /// <summary>A group whose <c>shots</c> array is present but empty says no more than a
