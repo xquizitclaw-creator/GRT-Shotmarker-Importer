@@ -1,3 +1,5 @@
+using System.Globalization;
+using System.Linq;
 using ShotMarker.Core.Faces;
 using Xunit;
 
@@ -51,11 +53,34 @@ public class TargetFaceTests
         Assert.Null(TargetFaceLibrary.Find("NO_SUCH_FACE"));
     }
 
+    /// <summary>The generic face has no scoring rings — it stands in for a target we have no
+    /// geometry for — but it must still carry a centre cross and a labelled scale bar. Without
+    /// them an unknown face_id renders as shots floating on blank white, with nothing to read
+    /// group size or point of aim against, which is the one thing the fallback exists to
+    /// preserve.</summary>
     [Fact]
-    public void GenericFallbackHasNoRings()
+    public void GenericFallbackHasNoRingsButDoesCarryACentreCrossAndALabelledScaleBar()
     {
         var g = TargetFaceLibrary.Generic(1887, 1908);
+
         Assert.Empty(g.Rings);
         Assert.Equal(1887, g.BoardWidthMm, 1);
+
+        // A cross through dead centre: one poly spanning x either side of 0 at y == 0, and
+        // one spanning y either side of 0 at x == 0.
+        Assert.Contains(g.Polys, p => p.Points.All(q => q.YMm == 0)
+                                      && p.Points.Any(q => q.XMm < 0) && p.Points.Any(q => q.XMm > 0));
+        Assert.Contains(g.Polys, p => p.Points.All(q => q.XMm == 0)
+                                      && p.Points.Any(q => q.YMm < 0) && p.Points.Any(q => q.YMm > 0));
+
+        // The bar is labelled with its own length, so the number on screen is checkable
+        // against the drawing rather than merely decorative.
+        TargetText label = Assert.Single(g.Texts);
+        Assert.EndsWith(" mm", label.Text);
+        double stated = double.Parse(label.Text[..^3], CultureInfo.InvariantCulture);
+        Assert.Contains(g.Polys, p => p.Points.Count == 2
+                                      && Math.Abs(Math.Abs(p.Points[0].XMm - p.Points[1].XMm) - stated) < 1e-9
+                                      && p.Points[0].YMm == p.Points[1].YMm);
+        Assert.True(stated <= g.BoardWidthMm * 0.25, "the scale bar must fit well inside the board");
     }
 }

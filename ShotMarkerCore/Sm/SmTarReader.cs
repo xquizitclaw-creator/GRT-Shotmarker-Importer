@@ -189,12 +189,17 @@ public static class SmTarReader
                 // A shot that errored on the device (d.ErrorCode != 0) or is a "fake" entry
                 // never had coordinates decoded — NaN rather than (0,0) so a caller that
                 // forgets to check IsInvalid/IsFlyer gets an obviously wrong answer, not a
-                // silently-plausible one.
+                // silently-plausible one. A *warning* is not an error: that shot has real
+                // coordinates and stays a counting record shot, exactly as on the device.
                 shots.Add(new SmShot(
                     shots.Count + 1,
                     d.XMm ?? double.NaN, d.YMm ?? double.NaN,
                     d.VelocityMps, score, d.TempC,
-                    d.Sighter, invalid, memberTs?.Contains(d.Ts)));
+                    d.Sighter, invalid, memberTs?.Contains(d.Ts), d.ExcludedOnDevice));
+
+                if (d.WarningCode is { } w)
+                    log.Add($"{stringId}: shot {shots.Count} carries device warning {w} — " +
+                            "imported and counted, as ShotMarker does");
             }
             catch (Exception ex)
             {
@@ -254,21 +259,33 @@ public static class SmTarReader
     }
 
     private readonly record struct DecodedShot(
-        long Ts, bool Sighter, bool Fake, double? TempC, double? XMm, double? YMm, double? VelocityMps,
-        int? ErrorCode, string? ScoreOverride);
+        long Ts, bool Sighter, bool Fake, bool ExcludedOnDevice, double? TempC,
+        double? XMm, double? YMm, double? VelocityMps,
+        int? ErrorCode, int? WarningCode, string? ScoreOverride);
 
     /// <summary>Ported from the ShotMarker bundle's <c>decode_shot</c>. Reads a cursor forward
-    /// through the encoded string; a shot whose error byte (<c>d</c>) is non-zero has no
-    /// x/y/v at all — those fields stay null. <c>Ts</c> is the join key against a group's
-    /// member <c>shots[].ts</c> (task 9b) — every return path carries it.</summary>
+    /// through the encoded string; a shot whose error byte (<c>d</c>) names an *error* has no
+    /// x/y/v at all — those fields stay null — while a *warning* on the same byte leaves the
+    /// measurement intact. <c>Ts</c> is the join key against a group's member
+    /// <c>shots[].ts</c> (task 9b) — every return path carries it.</summary>
     private static DecodedShot DecodeShot(string s)
     {
         var c = new Cursor(s);
 
         long ts = 16777216 * Decode64(c.Take(3)) + Decode64(c.Take(4));
 
+        // The vendor reads four flags from this byte — 1 simulated, 2 hide, 4 sighter, 8 off —
+        // and every one of its statistics functions (calc_group_size, calc_string_velocity,
+        // calc_string_sd, calc_group_stats) excludes hide, off and fake alike. A shot carrying
+        // any of them is one the device is not counting: the spec's `display: false` case.
+        // Keeping only `sighter` imported a hidden cross-fire or an off-target shot as an
+        // ordinary scoring hit whenever the export had no selected group to contradict it.
         long f1 = c.Byte();
+        bool simulated = (f1 & 1) != 0;
+        bool hidden = (f1 & 2) != 0;
         bool sighter = (f1 & 4) != 0;
+        bool offTarget = (f1 & 8) != 0;
+        bool excluded = simulated || hidden || offTarget;
 
         long f2 = c.Byte();
         bool fake = (f2 & 8) != 0;
@@ -283,7 +300,7 @@ public static class SmTarReader
         }
 
         if (fake)
-            return new DecodedShot(ts, sighter, true, null, null, null, null, null, scoreOverride);
+            return new DecodedShot(ts, sighter, true, excluded, null, null, null, null, null, null, scoreOverride);
 
         double temp = c.Byte() - 20;
         long a = Decode64(c.Take(2));
@@ -293,14 +310,26 @@ public static class SmTarReader
             _ = Decode64(c.Take(len)); // sensor timing — bookkeeping only, not needed further
         }
 
+        // The vendor splits this byte in two. Codes 1..31 are errors ("no valid solution",
+        // "off target left", "unrealistic high velocity", …) and suppress the measurement
+        // entirely — its guard is `!r.error && (r.x = …, r.y = …, r.v = …)`, so the encoded
+        // string simply carries no coordinates to read. Codes 32 and above are *warnings*
+        // (quality, angle, velocity, "measured off target …") on a shot that still carries
+        // full x/y/v and that ShotMarker plots, scores and counts like any other.
+        //
+        // Treating the whole class as fatal dropped every warned shot out of the picture, the
+        // group box and the velocity average. If the warned shot was the widest hit, the
+        // imported group read *smaller* than the one actually fired — the silent-wrong-answer
+        // failure this reader exists to prevent.
         long d = c.Byte();
-        if (d != 0)
-            return new DecodedShot(ts, sighter, false, temp, null, null, null, (int)d, scoreOverride);
+        if (d is > 0 and < 32)
+            return new DecodedShot(ts, sighter, false, excluded, temp, null, null, null, (int)d, null, scoreOverride);
 
         double x = Polar(Decode64(c.Take(2)), 4000, 1.6, 2047);
         double y = Polar(Decode64(c.Take(2)), 4000, 1.6, 2047);
         double v = (Decode64(c.Take(2)) + 1000) / FeetPerMetre;
-        return new DecodedShot(ts, sighter, false, temp, x, y, v, 0, scoreOverride);
+        return new DecodedShot(ts, sighter, false, excluded, temp, x, y, v, 0,
+                               d >= 32 ? (int)d : null, scoreOverride);
     }
 
     private static double Polar(long e, double t, double o, double i) =>
@@ -453,6 +482,17 @@ public static class SmTarReader
                 tsEl.ValueKind == JsonValueKind.Number &&
                 tsEl.TryGetInt64(out long ts))
                 members.Add(ts);
+        }
+
+        // An array that is present but yields no usable member is "the source does not say"
+        // just as much as a missing one. Returning the empty set instead would make
+        // `memberTs.Contains(ts)` false for every shot, so every shot becomes a flyer: an
+        // all-flyer tab with an empty group box, no velocity measurement and a banner reading
+        // "0 of 20 record shots".
+        if (members.Count == 0)
+        {
+            log.Add($"{stringId}: group lists no usable member shots — group membership unavailable");
+            return null;
         }
         return members;
     }

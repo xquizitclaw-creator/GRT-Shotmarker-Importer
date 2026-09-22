@@ -332,4 +332,165 @@ public class SmTarReaderTests
         }
         throw new InvalidOperationException("no string-*.z entry found in fixture");
     }
+
+    // ---- device error / warning bytes and the "does not count" flags ------------------
+    //
+    // The fixture's 69 shots all decode with a zero status byte and no flags beyond
+    // `sighter`, so none of the behaviour below can be reached from it directly. These
+    // tests take a REAL encoded shot and flip exactly the one byte under test, so the
+    // decoder under exercise is the same one the fixture runs through.
+
+    /// <summary>The vendor's <c>decode_shot</c> splits the status byte: codes 1..31 are
+    /// errors and suppress the measurement, codes 32+ are warnings on a shot that still
+    /// carries full x/y/v and that ShotMarker plots, scores and counts. A warning must not
+    /// cost the shot its coordinates — if it did, and the warned shot was the widest hit,
+    /// the imported group would read smaller than the one actually fired.</summary>
+    [Theory]
+    [InlineData(36)] // "quality"
+    [InlineData(38)] // "velocity"
+    [InlineData(32)] // "measured off target left"
+    [InlineData(99)] // unrecognised warning: the vendor's `default: d < 32 ? error : warning`
+    public void AWarningOnTheStatusByteKeepsTheMeasurementAndKeepsTheShotCounting(int code)
+    {
+        string clean = EncodedShotFromFixture(5);
+        SmShot unmutated = Assert.Single(ReadOneSyntheticShot(clean, new List<string>()));
+
+        var log = new List<string>();
+        SmShot warned = Assert.Single(ReadOneSyntheticShot(WithStatusByte(clean, code), log));
+
+        Assert.False(warned.IsInvalid);
+        Assert.False(warned.IsFlyer);
+        Assert.Equal(unmutated.XMm, warned.XMm, 9);
+        Assert.Equal(unmutated.YMm, warned.YMm, 9);
+        Assert.Equal(unmutated.VelocityMps, warned.VelocityMps);
+        Assert.Contains(log, l => l.Contains("warning", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>An error, by contrast, means the device never solved a position: the encoded
+    /// string carries no coordinates at all, so the shot is invalid and its position is NaN
+    /// rather than a silently-plausible (0,0) at dead centre.</summary>
+    [Theory]
+    [InlineData(1)]  // "insufficient sensor timings"
+    [InlineData(3)]  // "no valid solution"
+    [InlineData(31)] // unrecognised error, still below the warning threshold
+    public void AnErrorOnTheStatusByteMarksTheShotInvalidWithNoPosition(int code)
+    {
+        var log = new List<string>();
+        SmShot shot = Assert.Single(
+            ReadOneSyntheticShot(TruncateAfterStatusByte(WithStatusByte(EncodedShotFromFixture(5), code)), log));
+
+        Assert.True(shot.IsInvalid);
+        Assert.True(shot.IsFlyer);
+        Assert.True(double.IsNaN(shot.XMm));
+        Assert.True(double.IsNaN(shot.YMm));
+    }
+
+    /// <summary>The flag byte carries four flags — 1 simulated, 2 hide, 8 off, alongside
+    /// 4 sighter — and every one of ShotMarker's own statistics functions excludes hide, off
+    /// and fake alike. Such a shot keeps its real coordinates (the device greys it rather than
+    /// removing it) but must not count. This is asserted with NO group present, because that
+    /// is the case where group membership cannot launder the flag: <c>InSelectedGroup</c> is
+    /// null for every shot, so <c>IsFlyer</c> here can only come from the flag itself.</summary>
+    [Theory]
+    [InlineData(1)] // simulated — a shot that was never fired
+    [InlineData(2)] // hide — the shooter struck it out, e.g. a cross-fire
+    [InlineData(8)] // off — off target
+    public void AShotTheDeviceMarksAsNotCountingIsStillPlottedButNeverCounted(int bit)
+    {
+        SmShot shot = Assert.Single(
+            ReadOneSyntheticShot(WithFlagBit(EncodedShotFromFixture(5), bit), new List<string>()));
+
+        Assert.Null(shot.InSelectedGroup);
+        Assert.True(shot.IsExcludedOnDevice);
+        Assert.True(shot.IsFlyer);
+        Assert.False(shot.IsInvalid);
+        Assert.False(double.IsNaN(shot.XMm)); // still drawable, as ShotMarker draws it
+    }
+
+    /// <summary>A group whose <c>shots</c> array is present but empty says no more than a
+    /// missing one. Returning an empty member set instead would make every shot fail the
+    /// membership test at once — an all-flyer tab with an empty group box and a banner
+    /// reading "0 of N record shots".</summary>
+    [Fact]
+    public void AGroupWhoseMemberListIsEmptyLeavesMembershipNullRatherThanFlyeringEveryShot()
+    {
+        var log = new List<string>();
+        SmShot shot = Assert.Single(ReadOneSyntheticShot(
+            EncodedShotFromFixture(5), log,
+            new JsonObject { ["1"] = new JsonObject { ["id"] = 1, ["shots"] = new JsonArray() } }));
+
+        Assert.Null(shot.InSelectedGroup);
+        Assert.False(shot.IsFlyer);
+        Assert.Contains(log, l => l.Contains("membership", StringComparison.OrdinalIgnoreCase));
+    }
+
+    /// <summary>Reads a synthetic one-string archive containing exactly the given encoded
+    /// shot, so a test can assert on one mutated shot without the fixture's other 68.</summary>
+    private static IReadOnlyList<SmShot> ReadOneSyntheticShot(
+        string encodedShot, List<string> log, JsonObject? groups = null)
+    {
+        var body = new JsonObject
+        {
+            ["name"] = "synthetic-one-shot",
+            ["ts"] = 0,
+            ["face_id"] = "X",
+            ["dist"] = 100,
+            ["dist_unit"] = "m",
+            ["width"] = 10,
+            ["height"] = 10,
+            ["bullet"] = null,
+            ["score_string"] = "",
+            ["encoded"] = true,
+            ["shots"] = new JsonArray(encodedShot),
+            ["shots_invalid"] = new JsonArray(),
+            ["groups"] = groups ?? new JsonObject(),
+        };
+        using MemoryStream tar = BuildSyntheticTar(body, "string-7777777777777.z");
+        return Assert.Single(SmTarReader.Read(tar, log)).Shots;
+    }
+
+    /// <summary>Character values in this encoding are <c>charCode - 35</c>. Sets one bit of
+    /// the flag byte, which sits immediately after the seven-character timestamp.
+    ///
+    /// The bit is set on the decoded VALUE and the offset re-applied, never on the character
+    /// itself: 35 is 0b100011, so OR-ing a bit straight into the character silently does
+    /// nothing for bits 1 and 2 — which is exactly how this helper first failed.</summary>
+    private static string WithFlagBit(string encoded, int bit)
+    {
+        char[] c = encoded.ToCharArray();
+        c[7] = (char)(((c[7] - 35) | bit) + 35);
+        return new string(c);
+    }
+
+    /// <summary>Replaces the status byte with <paramref name="code"/>. Its offset is not
+    /// fixed: it follows the timestamp, two flag bytes, an optional score override, the
+    /// temperature and the eight sensor timings, whose individual lengths are themselves
+    /// encoded in the two-character word before them. This walks that structure the same way
+    /// the decoder does — deliberately, so a test cannot silently mutate the wrong byte.</summary>
+    private static int StatusByteOffset(string s)
+    {
+        int i = 7;                       // ts: 3 + 4
+        int f2 = s[i + 1] - 35;
+        i += 2;                          // both flag bytes
+        if ((f2 & 16) != 0) i += 1;      // score override
+        Assert.True((f2 & 8) == 0, "fixture shot is a 'fake' entry and carries no status byte");
+        i += 1;                          // temperature
+        long a = (s[i] - 35) + ((long)(s[i + 1] - 35) << 6);
+        i += 2;
+        for (int l = 0; l < 8; l++) i += ((a >> (10 - l)) & 1) != 0 ? 3 : 2;
+        return i;
+    }
+
+    private static string WithStatusByte(string encoded, int code)
+    {
+        char[] c = encoded.ToCharArray();
+        c[StatusByteOffset(encoded)] = (char)(code + 35);
+        return new string(c);
+    }
+
+    /// <summary>An errored shot's encoded string genuinely ends at the status byte — the
+    /// device wrote no position after it. Truncating mirrors that rather than leaving
+    /// coordinates the decoder is being asserted not to read.</summary>
+    private static string TruncateAfterStatusByte(string encoded) =>
+        encoded[..(StatusByteOffset(encoded) + 1)];
 }

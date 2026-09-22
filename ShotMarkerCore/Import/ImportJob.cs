@@ -40,7 +40,7 @@ public static class ImportJob
             }
         }
 
-        return doc.SaveSibling("import", family: "shotmarker");
+        return GrtShotGroupWriter.Save(doc);
     }
 
     private static TargetFace Fallback(SmString s, IList<string> log)

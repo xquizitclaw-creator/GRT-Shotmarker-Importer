@@ -40,11 +40,49 @@ public static class TargetFaceLibrary
             needle.Contains(f.Name, StringComparison.OrdinalIgnoreCase));
     }
 
-    /// <summary>A blank board of the given size: shots, centre cross and scale bar only.
-    /// What an unrecognised face_id renders as, so an unknown target never aborts an import.</summary>
-    public static TargetFace Generic(double widthMm, double heightMm) =>
-        new("GENERIC", "Unknown target", "Unknown", widthMm, heightMm, 2,
-            Array.Empty<TargetRing>(), Array.Empty<TargetPoly>(), Array.Empty<TargetText>());
+    /// <summary>A blank board of the given size carrying a centre cross and a labelled scale
+    /// bar. What an unrecognised face_id renders as, so an unknown target never aborts an
+    /// import.
+    ///
+    /// The furniture is the whole point of this face. With no rings to judge against, shots
+    /// floating on blank white give the shooter no way to read group size or even which way is
+    /// up; the cross fixes the point of aim and the bar fixes the scale.</summary>
+    public static TargetFace Generic(double widthMm, double heightMm)
+    {
+        double w = widthMm > 0 ? widthMm : 1000;
+        double h = heightMm > 0 ? heightMm : 1000;
+        double span = Math.Min(w, h);
+
+        double arm = span * 0.04;
+        var cross = new[]
+        {
+            new TargetPoly("b", 1, new[] { new TargetPoint(-arm, 0), new TargetPoint(arm, 0) }),
+            new TargetPoly("b", 1, new[] { new TargetPoint(0, -arm), new TargetPoint(0, arm) }),
+        };
+
+        // The longest round length that still fits comfortably across the board, so the bar
+        // reads as a useful ruler on a 300 yd face and on a 1000 yd one alike.
+        double bar = new[] { 1000.0, 500, 200, 100, 50, 20, 10 }
+            .FirstOrDefault(d => d <= w * 0.25, 10);
+
+        double margin = span * 0.05;
+        double x0 = -w / 2 + margin;
+        double y0 = -h / 2 + margin;
+        double tick = span * 0.012;
+        var scale = new[]
+        {
+            new TargetPoly("b", 1, new[] { new TargetPoint(x0, y0), new TargetPoint(x0 + bar, y0) }),
+            new TargetPoly("b", 1, new[] { new TargetPoint(x0, y0 - tick), new TargetPoint(x0, y0 + tick) }),
+            new TargetPoly("b", 1, new[] { new TargetPoint(x0 + bar, y0 - tick), new TargetPoint(x0 + bar, y0 + tick) }),
+        };
+
+        var label = new TargetText(
+            x0 + bar / 2, y0 + tick + span * 0.025, span * 0.03, "b",
+            bar.ToString("0", CultureInfo.InvariantCulture) + " mm");
+
+        return new TargetFace("GENERIC", "Unknown target", "Unknown", w, h, 2,
+            Array.Empty<TargetRing>(), cross.Concat(scale).ToArray(), new[] { label });
+    }
 
     private static Dictionary<string, TargetFace> Load()
     {
