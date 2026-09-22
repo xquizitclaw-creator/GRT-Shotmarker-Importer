@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8" standalone="yes" ?>
+<GordonsReloadingTool>
+
+  <plugin
+    name           = "ShotMarker Import"
+    id             = "com.grt.plugin.shotmarker"
+    version        = "0.1.0"
+    provider       = "community"
+    description    = "Imports ShotMarker electronic-target exports (.tar and .csv). Each shooting string becomes a shot-group tab with the target face drawn to scale and every hit placed on it, plus a measurement of the shot velocities and a note carrying ShotMarker's own group statistics."
+    launch-windows = "GRT_ShotMarker.exe"
+    launch-type    = "onDemand"
+    launch-args    = ""
+    start-timeout  = "5.0"
+    enabled        = "true"
+  >
+
+    <registerevent>
+      <event name="TabSwitch" enabled="false" />
+      <event name="WindowClosed" enabled="false" />
+    </registerevent>
+
+    <menu autoenable="true" icon="media/icons/icn_shotmarker_16x16.png" icon_colorize="false">
+      <menuitem id="open" label="Import ShotMarker…" enabled="true"
+                icon="media/icons/icn_shotmarker_16x16.png" icon_colorize="false" />
+    </menu>
+
+    <toolbar>
+      <toolbaritem id="open" label="ShotMarker"
+                   tooltip="Import a ShotMarker export: target picture, hits and velocities"
+                   icon="media/icons/icn_shotmarker_32x32.png" icon_colorize="false" enabled="true" />
+    </toolbar>
+
+  </plugin>
+</GordonsReloadingTool>
