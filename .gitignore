@@ -3,4 +3,7 @@ obj/
 *.user
 .DS_Store
 dist/
+# build-plugin.ps1 publishes here before assembling dist\; committing it would put the
+# whole publish output - exe, DLLs, PDBs - into a public repo on the next `git add -A`.
+artifacts/
 .superpowers/

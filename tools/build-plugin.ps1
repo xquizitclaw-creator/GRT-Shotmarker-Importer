@@ -76,8 +76,15 @@ function Stamp($manifest) {
 
 Write-Host "==> publish: framework-dependent"
 $publishDir = Join-Path $root "artifacts\publish"
+# Wiped rather than published over: publish adds and overwrites but never removes, so a Debug
+# run followed by a Release one leaves the Debug-only leftovers behind, and the copy below
+# would rake them into dist\ShotMarker as if they belonged to this build.
+if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
+# DebugType=none keeps the .pdb for every assembly out of a folder people download and unzip;
+# SatelliteResourceLanguages=en drops the per-language resource folders nothing here uses.
 & $dotnet publish $csproj -c $Configuration -r win-x64 --self-contained false `
-    -p:PublishSingleFile=false -o $publishDir | Out-Host
+    -p:PublishSingleFile=false -p:DebugType=none -p:SatelliteResourceLanguages=en `
+    -o $publishDir | Out-Host
 # `& dotnet.exe` is a native command: $ErrorActionPreference = "Stop" does not see its exit code,
 # only PowerShell's own terminating errors - a failed publish would otherwise fall through to the
 # assembly step below, which happily re-packages whatever is already sitting in $publishDir from a
