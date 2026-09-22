@@ -164,7 +164,11 @@ internal sealed class ImportForm : Form
         // A second click while this one is still in flight would start a concurrent write
         // against the same sibling load; RequestAsync serialises GRT's own IPC traffic but the
         // file write on disk does not.
+        // Browse is disabled alongside it: it clears the grid, and a grid cleared out from
+        // under an import in flight leaves the window describing a state that is not the one
+        // being written.
         _import.Enabled = false;
+        _browse.Enabled = false;
         try
         {
             var log = new List<string>();
@@ -179,7 +183,7 @@ internal sealed class ImportForm : Form
             try { await grt.LoadFileAsync(outPath); }
             catch (Exception ex) { Note($"GRT did not open it ({ex.Message}); open {outPath} by hand."); }
         }
-        finally { _import.Enabled = true; }
+        finally { _import.Enabled = true; _browse.Enabled = true; }
     }
 
     private void Note(string line) => _log.AppendText(line + Environment.NewLine);
