@@ -12,3 +12,7 @@ artifacts/
 # regenerate targetfaces.json — but it is ShotMarker's copyrighted code and this repo is
 # public, so it must never be committed. Ruling F31.
 fixtures/shotmarker/bundle/
+
+# ShotMarker's device software package (server.js, server_shot.js, the web bundle, …).
+# Same reasoning as the bundle above: kept locally for reading, never committed. Ruling F31.
+SM_software_*.tar
