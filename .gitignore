@@ -16,3 +16,8 @@ fixtures/shotmarker/bundle/
 # ShotMarker's device software package (server.js, server_shot.js, the web bundle, …).
 # Same reasoning as the bundle above: kept locally for reading, never committed. Ruling F31.
 SM_software_*.tar
+
+# The bug report written for AMB about the dead velocity-outlier check. It quotes a few
+# expressions from ShotMarker's firmware verbatim, so it stays out of a public repo for
+# the same reason the sources above do. Ruling F31.
+shotmarker-velocity-warning-report.md
