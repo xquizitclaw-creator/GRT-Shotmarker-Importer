@@ -22,3 +22,8 @@ SM_software_*.tar
 # reason the sources above do. Ruling F31.
 shotmarker-near-miss-report.md
 shotmarker-velocity-warning-report.md
+
+# Local test rig for the near-miss finding: two patched copies of ShotMarker's device
+# software plus the installable tars. Same reasoning as the sources above — it is
+# ShotMarker's code and this repo is public, so it never gets committed. Ruling F31.
+smtest/
