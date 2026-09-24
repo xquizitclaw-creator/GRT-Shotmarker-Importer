@@ -17,7 +17,8 @@ fixtures/shotmarker/bundle/
 # Same reasoning as the bundle above: kept locally for reading, never committed. Ruling F31.
 SM_software_*.tar
 
-# The bug report written for AMB about the dead velocity-outlier check. It quotes a few
-# expressions from ShotMarker's firmware verbatim, so it stays out of a public repo for
-# the same reason the sources above do. Ruling F31.
+# The report written for AMB about near-miss data retention. It quotes a few expressions
+# from ShotMarker's firmware verbatim, so it stays out of a public repo for the same
+# reason the sources above do. Ruling F31.
+shotmarker-near-miss-report.md
 shotmarker-velocity-warning-report.md
