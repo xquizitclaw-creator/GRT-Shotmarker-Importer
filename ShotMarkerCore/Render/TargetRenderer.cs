@@ -38,12 +38,10 @@ public static class TargetRenderer
     {
         RenderOptions o = options ?? new RenderOptions();
 
-        // Errored/fake shots carry double.NaN coordinates (see SmShot.IsInvalid). Filter
-        // them out before XMm/YMm is touched anywhere — a bounding box or a plotted point
-        // is not a place a NaN can pass through quietly; Math.Max(x, NaN) is NaN, and one
-        // such shot would silently poison the extent (and therefore the scale) for the
-        // entire picture, sighters and valid record shots included.
-        var plottable = s.Shots.Where(sh => !sh.IsInvalid).ToList();
+        // Filtered before XMm/YMm is touched anywhere — see SmShot.IsPlottable. A bounding
+        // box is not a place a NaN passes through quietly: one such shot poisons the extent,
+        // and therefore the scale, for the entire picture.
+        var plottable = s.Shots.Where(sh => sh.IsPlottable).ToList();
 
         // Ruling S1: the base extent is the board's own true mm size — no padding added
         // unconditionally. It only grows if a shot needs more room than the board gives it.
@@ -67,7 +65,7 @@ public static class TargetRenderer
         DrawRings(canvas, proj, face);
         DrawPolys(canvas, proj, face);
         if (o.DrawText) DrawTexts(canvas, proj, face);
-        DrawShots(canvas, proj, plottable, s.BulletDiameterMm, o.DrawText);
+        DrawShots(canvas, proj, plottable, s.BulletDiameterMm, o.DrawText && o.DrawShotNumbers);
         if (o.DrawFurniture) DrawFurniture(canvas, proj, s, o.DrawText);
 
         using SKImage image = surface.Snapshot();
@@ -179,7 +177,7 @@ public static class TargetRenderer
 
     /// <param name="shots">Already filtered to exclude <see cref="SmShot.IsInvalid"/> shots
     /// — their coordinates are double.NaN and cannot be plotted at all.</param>
-    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm, bool drawText)
+    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm, bool drawNumbers)
     {
         float radius = p.Px((bulletDiameterMm ?? 7.2) / 2);
         float discRadius = Math.Max(radius, 8);
@@ -197,7 +195,8 @@ public static class TargetRenderer
             // not apply to any of the others: they did it themselves, in the import window,
             // and the picture is the confirmation that it took. An exclusion the shooter
             // cannot see is one they cannot check. Grey, so it reads as struck out against
-            // both the red and the orange, and still numbered, so they can see WHICH.
+            // both the red and the orange — the colour, not the number, because on the
+            // picture GRT gets the numbers are GRT's (RenderOptions.DrawShotNumbers).
             using var fill = new SKPaint
             {
                 Color = sh.IsExcludedByUser ? new SKColor(0x9A, 0x9A, 0x9A)
@@ -213,7 +212,7 @@ public static class TargetRenderer
             c.DrawCircle(x, y, discRadius, fill);
             c.DrawCircle(x, y, discRadius, edge);
 
-            if (!drawText) continue;
+            if (!drawNumbers) continue;
             using var label = new SKPaint
             {
                 Color = SKColors.White, IsAntialias = true,
@@ -259,7 +258,10 @@ public static class TargetRenderer
     /// include over time (task 9b added InSelectedGroup == false).</summary>
     private static (double X0, double X1, double Y0, double Y1)? ScoringExtentMm(SmString s)
     {
-        var scoring = s.Shots.Where(sh => !sh.IsFlyer).ToList();
+        // IsPlottable as well as !IsFlyer: this box is a min/max over coordinates, so an
+        // unflagged NaN here would not merely misplace it — it would put NaN through every
+        // figure on the statistics banner.
+        var scoring = s.Shots.Where(sh => !sh.IsFlyer && sh.IsPlottable).ToList();
         if (scoring.Count == 0) return null;
         return (scoring.Min(sh => sh.XMm), scoring.Max(sh => sh.XMm),
                 scoring.Min(sh => sh.YMm), scoring.Max(sh => sh.YMm));

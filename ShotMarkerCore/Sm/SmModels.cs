@@ -37,6 +37,16 @@ public sealed record SmShot(
     /// deliberately hidden cross-fire as an ordinary scoring hit.</summary>
     public bool IsFlyer => IsSighter || IsInvalid || IsExcludedOnDevice || IsExcludedByUser
                            || InSelectedGroup == false;
+
+    /// <summary>Whether this shot has a position anything can draw or measure.
+    ///
+    /// <para><see cref="IsInvalid"/> alone is not that test. It is the device's own flag on an
+    /// errored or fake shot, and a shot it did not flag can still reach us with a coordinate
+    /// that is not a number. One such coordinate poisons every bounding box it enters —
+    /// <c>Math.Max(x, NaN)</c> is NaN — which silently rescales the whole picture, or sizes
+    /// the canvas to nothing and kills the render outright. So both facts are one predicate,
+    /// checked in the one place, by everything that reads <see cref="XMm"/>.</para></summary>
+    public bool IsPlottable => !IsInvalid && double.IsFinite(XMm) && double.IsFinite(YMm);
 }
 
 /// <summary>ShotMarker's own computed statistics for a group, carried through unaltered

@@ -26,20 +26,24 @@ public static class ImportJob
             ? GrtLoadDoc.Load(loadPath)
             : GrtLoadDoc.CreateMinimal(Path.GetFileNameWithoutExtension(loadPath), loadPath);
 
+        // Rendered first, written second, because the writing is one operation over the whole
+        // selection: the strings share a velocity measurement and a note, and that is what
+        // keeps a five-string session's tabs inside a tab bar GRT will not scroll.
+        var items = new List<ImportItem>();
         foreach (var (s, charge) in selected)
         {
             try
             {
                 TargetFace face = ResolveFace(s, log);
-                RenderedTarget render = TargetRenderer.Render(s, face);
-                GrtShotGroupWriter.Add(doc, new ImportItem(s, render, charge), log);
+                items.Add(new ImportItem(s, TargetRenderer.Render(s, face, RenderOptions.ForGrt), charge));
             }
             catch (Exception ex)
             {
-                log.Add($"'{s.Name}': not imported ({ex.Message})");
+                log.Add($"'{s.Name}': not rendered ({ex.Message})");
             }
         }
 
+        GrtShotGroupWriter.AddAll(doc, items, log);
         return GrtShotGroupWriter.Save(doc);
     }
 

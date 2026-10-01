@@ -255,7 +255,8 @@ internal sealed class ImportForm : Form
         Image? old = _face.Image;
         try
         {
-            RenderedTarget r = TargetRenderer.Render(s, ImportJob.ResolveFace(s, new List<string>()));
+            RenderedTarget r = TargetRenderer.Render(
+                s, ImportJob.ResolveFace(s, new List<string>()), RenderOptions.ForPreview);
             using var ms = new MemoryStream(r.Png);
             // Copied into a Bitmap of its own rather than handed out directly: Image.FromStream
             // keeps the stream it was given and reads from it lazily, so the picture would be

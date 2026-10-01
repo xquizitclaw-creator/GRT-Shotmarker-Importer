@@ -78,39 +78,80 @@ public static class GrtShotGroupWriter
     /// <param name="config">The GRT install that will read the file, for the units of the two
     /// unlabelled shot-group numbers. Null falls back to the install this plugin is running
     /// beside, and to metric when there is none.</param>
-    public static void Add(GrtLoadDoc doc, ImportItem item, IList<string> log, GrtConfig? config = null)
-    {
-        SmString s = item.String;
-        if (s.Shots.Count == 0) { log.Add($"'{s.Name}': no shots — not imported"); return; }
+    public static void Add(GrtLoadDoc doc, ImportItem item, IList<string> log, GrtConfig? config = null) =>
+        AddAll(doc, new[] { item }, log, config);
 
-        string title = $"ShotMarker — {s.Name}";
-        if (!AddTab(doc, item, title, config ?? GrtConfig.Current, log)) return;
-        AddVelocities(doc, item, title, log);
-        AddStatsNote(doc, s, title);
-        log.Add($"'{s.Name}': {s.Shots.Count} shots at {s.DistanceValue.ToString("0", CultureInfo.InvariantCulture)}{s.DistanceUnit}");
+    /// <summary>
+    /// Appends a whole import: one shot-group tab per string, then ONE velocity measurement
+    /// and ONE note covering all of them.
+    ///
+    /// <para>The picture is what forces a tab per string — a GRT shot group holds exactly one
+    /// — but the velocities and the notes do not have to be split that way, and GRT's tab bar
+    /// does not scroll, so a tab past the right-hand edge of the window cannot be reached at
+    /// all. Three tabs per string put a five-string session's last tabs out of reach; one per
+    /// string plus two keeps them on screen. Collecting the charges is also the shape GRT's
+    /// own ladder and OCW analysis wants: one measurement holding every charge, rather than
+    /// several it cannot compare.</para>
+    /// </summary>
+    public static void AddAll(GrtLoadDoc doc, IEnumerable<ImportItem> items, IList<string> log,
+                              GrtConfig? config = null)
+    {
+        var charges = new List<GrtCharge>();
+        var notes = new List<string>();
+        var titles = new List<string>();
+
+        foreach (ImportItem item in items)
+        {
+            SmString s = item.String;
+            // Best-effort per string, same promise ImportJob makes for reading and rendering:
+            // one string the writer chokes on must not cost the shooter the other four.
+            try
+            {
+                if (s.Shots.Count == 0) { log.Add($"'{s.Name}': no shots — not imported"); continue; }
+
+                string title = $"ShotMarker — {s.Name}";
+                if (AddTab(doc, item, title, config ?? GrtConfig.Current, log) is not { } dropped) continue;
+
+                titles.Add(title);
+                if (ChargeFor(item, log) is { } charge) charges.Add(charge);
+                notes.Add(NoteText(s, dropped));
+                log.Add($"'{s.Name}': {s.Shots.Count} shots at {s.DistanceValue.ToString("0", CultureInfo.InvariantCulture)}{s.DistanceUnit}");
+            }
+            catch (Exception ex)
+            {
+                log.Add($"'{s.Name}': not imported ({ex.Message})");
+            }
+        }
+
+        // One string keeps the title it always had, so a single import is tab-for-tab what it
+        // was before this collecting existed.
+        if (charges.Count > 0)
+            doc.AddMeasurement(titles.Count == 1 ? titles[0] : "ShotMarker — velocities", charges);
+        if (notes.Count > 0)
+            doc.AddNote(titles.Count == 1 ? titles[0] : "ShotMarker — notes",
+                        string.Join("\n\n" + new string('-', 60) + "\n\n", notes));
     }
 
-    private static bool AddTab(GrtLoadDoc doc, ImportItem item, string title, GrtConfig? cfg, IList<string> log)
+    /// <summary>Writes the shot-group tab and returns the numbers of the shots it could not
+    /// plot, or null when the string could not be written at all.</summary>
+    private static IReadOnlyList<int>? AddTab(GrtLoadDoc doc, ImportItem item, string title,
+                                              GrtConfig? cfg, IList<string> log)
     {
         SmString s = item.String;
         TargetProjection proj = item.Render.Projection;
 
-        // Errored and "fake" shots carry double.NaN coordinates (SmShot.IsInvalid), and
-        // AddShotGroup formats with ToString("R"), which writes the literal "NaN" without
-        // complaint — GRT then parses it back as 0 and plants a phantom hit in the corner of
-        // the picture. So they are dropped before XMm/YMm is read at all, which is also what
-        // TargetRenderer did: the points written are exactly the discs drawn. IsFinite is
-        // belt and braces for any future source of a bad coordinate.
-        var plottable = s.Shots
-            .Where(sh => !sh.IsInvalid && double.IsFinite(sh.XMm) && double.IsFinite(sh.YMm))
-            .ToList();
-        int dropped = s.Shots.Count - plottable.Count;
-        if (dropped > 0)
-            log.Add($"'{s.Name}': {dropped} shot(s) with no coordinates — not plotted");
+        // AddShotGroup formats coordinates with ToString("R"), which writes the literal "NaN"
+        // without complaint — GRT then parses it back as 0 and plants a phantom hit in the
+        // corner of the picture. SmShot.IsPlottable is the same predicate TargetRenderer
+        // filters on, so the points written are exactly the discs drawn.
+        var plottable = s.Shots.Where(sh => sh.IsPlottable).ToList();
+        var dropped = s.Shots.Select(sh => sh.Number).Except(plottable.Select(sh => sh.Number)).ToList();
+        if (dropped.Count > 0)
+            log.Add($"'{s.Name}': {dropped.Count} shot(s) with no coordinates — not plotted");
         if (plottable.Count == 0)
         {
             log.Add($"'{s.Name}': no shot has coordinates — not imported");
-            return false;
+            return null;
         }
 
         var set = new GrtShotGroupSet { Name = GroupName(item) };
@@ -138,7 +179,7 @@ public static class GrtShotGroupWriter
         if (!(refDistance > 0) || !double.IsFinite(refDistance))
         {
             log.Add($"'{s.Name}': the picture has no usable size — not imported");
-            return false;
+            return null;
         }
         if (!(shootDistance > 0) || !double.IsFinite(shootDistance))
         {
@@ -154,7 +195,7 @@ public static class GrtShotGroupWriter
         doc.AddShotGroup(title, item.Render.Png,
             new ShotGroupGeometry(p1x, p1y, p2x, p2y, refDistance, shootDistance),
             new[] { set }, pointSize);
-        return true;
+        return dropped;
     }
 
     /// <summary>
@@ -166,7 +207,9 @@ public static class GrtShotGroupWriter
             ? gr.ToString("0.0#", CultureInfo.InvariantCulture) + " gr"
             : item.String.Name;
 
-    private static void AddVelocities(GrtLoadDoc doc, ImportItem item, string title, IList<string> log)
+    /// <summary>This string's velocities as one GRT charge, or null when it has none. Built
+    /// rather than written, because every string in an import shares one measurement.</summary>
+    private static GrtCharge? ChargeFor(ImportItem item, IList<string> log)
     {
         SmString s = item.String;
         // Ruling F27: the velocity series uses the same predicate as the shot group — exclude
@@ -179,7 +222,7 @@ public static class GrtShotGroupWriter
         var shots = s.Shots
             .Where(sh => !sh.IsFlyer && sh.VelocityMps is > 0 && double.IsFinite(sh.VelocityMps.Value))
             .ToList();
-        if (shots.Count == 0) { log.Add($"'{s.Name}': no velocities — measurement omitted"); return; }
+        if (shots.Count == 0) { log.Add($"'{s.Name}': no velocities — measurement omitted"); return null; }
 
         var charge = new GrtCharge
         {
@@ -191,10 +234,11 @@ public static class GrtShotGroupWriter
         foreach (SmShot sh in shots)
             charge.Shots.Add(new GrtShot(sh.VelocityMps!.Value, sh.Score));
 
-        doc.AddMeasurement(title, new[] { charge });
+        return charge;
     }
 
-    private static void AddStatsNote(GrtLoadDoc doc, SmString s, string title)
+    /// <summary>This string's block of the import note.</summary>
+    private static string NoteText(SmString s, IReadOnlyList<int> dropped)
     {
         var ic = CultureInfo.InvariantCulture;
         var lines = new List<string>
@@ -227,6 +271,17 @@ public static class GrtShotGroupWriter
             lines.Add($"Excluded on import: shot{(struckOut.Count > 1 ? "s" : "")} " +
                       string.Join(", ", struckOut.Select(n => n.ToString(ic))));
 
+        // Said here because the picture can no longer say it. GRT prints its own number
+        // beside every hit it holds, counting them from one, and that is the only numbering
+        // on the imported picture (RenderOptions.DrawShotNumbers). While every shot is
+        // plotted those labels are ShotMarker's numbers; drop one and everything after it
+        // shifts, and the shot numbers named elsewhere in this note stop matching the plot.
+        if (dropped.Count > 0)
+            lines.Add($"Not plotted: shot{(dropped.Count > 1 ? "s" : "")} " +
+                      string.Join(", ", dropped.Select(n => n.ToString(ic))) +
+                      " — no coordinates. GRT numbers the hits it holds from 1, so past " +
+                      "these its labels no longer match the shot numbers above.");
+
         if (s.Stats is { } st)
         {
             lines.Add("");
@@ -258,6 +313,6 @@ public static class GrtShotGroupWriter
             if (st.VelocitySdMps is { } sd) lines.Add($"  velocity sd   {sd.ToString("0.0", ic)} m/s");
             if (st.VelocityEsMps is { } es) lines.Add($"  velocity es   {es.ToString("0.0", ic)} m/s");
         }
-        doc.AddNote(title, string.Join("\n", lines));
+        return string.Join("\n", lines);
     }
 }
