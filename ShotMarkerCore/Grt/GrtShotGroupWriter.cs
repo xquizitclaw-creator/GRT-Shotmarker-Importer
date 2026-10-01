@@ -18,11 +18,21 @@ namespace ShotMarker.Core.Grt;
 /// <see cref="RenderedTarget.Projection"/> (ruling S2) and never recomputed from board size
 /// and pixel count.</para>
 ///
-/// <para>The unit that separation is stated in is <em>not</em> stored in the .grtload. It
-/// comes from the GRT install that will read the file, and the same is true of the shooting
-/// distance. Both are resolved through <see cref="GrtShotGroups.GrtDefaults(GrtConfig?)"/>.
-/// Writing millimetres and metres unconditionally puts an inch-and-yard install 25.4x and
-/// 1.0936x out — a group that looks perfectly plausible and measures wrong.</para>
+/// <para>That separation and the shooting distance are both stored in SI — millimetres and
+/// metres — whatever units the GRT reading them displays. Neither carries a unit in the
+/// .grtload, so this was worth getting from GRT itself rather than from a reader: a tab GRT
+/// wrote on an install configured <c>refdistance=in;range=yard</c> holds
+/// <c>refDistance="150.0124"</c> for a 5.906 in reference and <c>shootDistance="914.4"</c>
+/// for a 1000 yd string. GRT converts on the way to the screen, not on the way to the
+/// file.</para>
+///
+/// <para>Converting here as well divides twice. An imperial install showed a 1000 yd string
+/// as 1093.61 yd and its 1463 mm reference as 2.268 in — the distance 1.0936x out and the
+/// scale every group measurement is taken against 25.4x out. Note that
+/// <see cref="GrtShotGroups.ShootToM"/> and <see cref="GrtShotGroups.RefToMm"/> in
+/// GRT-Reloading-Toolkit convert these fields by the install's units when reading, which is
+/// the mirror image of the same mistake; that is a bug in a different project, and matching
+/// it here only made both wrong together.</para>
 /// </summary>
 public static class GrtShotGroupWriter
 {
@@ -58,28 +68,8 @@ public static class GrtShotGroupWriter
     /// returns the path written. The one supported way to save what this writer produced.</summary>
     public static string Save(GrtLoadDoc doc) => doc.SaveSibling("shotmarker", SiblingFamily);
 
-    /// <summary>
-    /// Millimetres expressed in the unit GRT will read a shot-group reference distance in —
-    /// the exact inverse of <see cref="GrtShotGroups.RefToMm"/>, which is the function that
-    /// will undo it.
-    /// </summary>
-    public static double MmToRef(double mm, RefUnit u) => u switch
-    {
-        RefUnit.Cm => mm / 10.0,
-        RefUnit.Inch => mm / GrtUnits.MmPerInch,
-        _ => mm,
-    };
-
-    /// <summary>Metres expressed in the unit GRT will read a shooting distance in — the exact
-    /// inverse of <see cref="GrtShotGroups.ShootToM"/>.</summary>
-    public static double MToShoot(double m, ShootUnit u) =>
-        u == ShootUnit.Yards ? m / GrtUnits.MetresPerYard : m;
-
-    /// <param name="config">The GRT install that will read the file, for the units of the two
-    /// unlabelled shot-group numbers. Null falls back to the install this plugin is running
-    /// beside, and to metric when there is none.</param>
-    public static void Add(GrtLoadDoc doc, ImportItem item, IList<string> log, GrtConfig? config = null) =>
-        AddAll(doc, new[] { item }, log, config);
+    public static void Add(GrtLoadDoc doc, ImportItem item, IList<string> log) =>
+        AddAll(doc, new[] { item }, log);
 
     /// <summary>
     /// Appends a whole import: one shot-group tab per string, then ONE velocity measurement
@@ -93,8 +83,7 @@ public static class GrtShotGroupWriter
     /// own ladder and OCW analysis wants: one measurement holding every charge, rather than
     /// several it cannot compare.</para>
     /// </summary>
-    public static void AddAll(GrtLoadDoc doc, IEnumerable<ImportItem> items, IList<string> log,
-                              GrtConfig? config = null)
+    public static void AddAll(GrtLoadDoc doc, IEnumerable<ImportItem> items, IList<string> log)
     {
         var charges = new List<GrtCharge>();
         var notes = new List<string>();
@@ -110,7 +99,7 @@ public static class GrtShotGroupWriter
                 if (s.Shots.Count == 0) { log.Add($"'{s.Name}': no shots — not imported"); continue; }
 
                 string title = $"ShotMarker — {s.Name}";
-                if (AddTab(doc, item, title, config ?? GrtConfig.Current, log) is not { } dropped) continue;
+                if (AddTab(doc, item, title, log) is not { } dropped) continue;
 
                 titles.Add(title);
                 if (ChargeFor(item, log) is { } charge) charges.Add(charge);
@@ -135,7 +124,7 @@ public static class GrtShotGroupWriter
     /// <summary>Writes the shot-group tab and returns the numbers of the shots it could not
     /// plot, or null when the string could not be written at all.</summary>
     private static IReadOnlyList<int>? AddTab(GrtLoadDoc doc, ImportItem item, string title,
-                                              GrtConfig? cfg, IList<string> log)
+                                              IList<string> log)
     {
         SmString s = item.String;
         TargetProjection proj = item.Render.Projection;
@@ -185,9 +174,10 @@ public static class GrtShotGroupWriter
         var (p1x, p1y) = proj.ToFraction(leftMm, midYMm);
         var (p2x, p2y) = proj.ToFraction(rightMm, midYMm);
 
-        var (refUnit, shootUnit) = GrtShotGroups.GrtDefaults(cfg);
-        double refDistance = MmToRef(refMm, refUnit);
-        double shootDistance = MToShoot(s.DistanceMetres, shootUnit);
+        // SI, unconverted: see the remarks on this class for the tab GRT itself wrote on an
+        // imperial install, and for what converting here did to one.
+        double refDistance = refMm;
+        double shootDistance = s.DistanceMetres;
         if (!(refDistance > 0) || !double.IsFinite(refDistance))
         {
             log.Add($"'{s.Name}': the picture has no usable size — not imported");

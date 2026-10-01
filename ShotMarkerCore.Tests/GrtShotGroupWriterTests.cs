@@ -315,43 +315,28 @@ public class GrtShotGroupWriterTests
         return Uri.UnescapeDataString(note.GetAttribute("text"));
     }
 
-    // ---- the unit conversions are exact inverses of the reader's -----------------------
-
-    [Theory]
-    [InlineData(RefUnit.Mm)]
-    [InlineData(RefUnit.Cm)]
-    [InlineData(RefUnit.Inch)]
-    public void RefConversionIsTheInverseOfTheReaders(RefUnit u)
-    {
-        const double mm = 1234.5678;
-        Assert.Equal(mm, GrtShotGroups.RefToMm(GrtShotGroupWriter.MmToRef(mm, u), u), 9);
-    }
-
-    [Theory]
-    [InlineData(ShootUnit.Meters)]
-    [InlineData(ShootUnit.Yards)]
-    public void ShootConversionIsTheInverseOfTheReaders(ShootUnit u)
-    {
-        const double m = 914.4;
-        Assert.Equal(m, GrtShotGroups.ShootToM(GrtShotGroupWriter.MToShoot(m, u), u), 9);
-    }
+    // ---- the two unlabelled numbers are millimetres and metres -------------------------
 
     /// <summary>
     /// The reference points bracket the picture's own horizontal midline, so the millimetres
     /// between them are a number the projection already knows exactly — and GRT recovers the
-    /// picture's true mm-per-pixel from them whatever unit it reads the distance in.
+    /// picture's true mm-per-pixel from them.
     ///
-    /// <para>Writes with an explicit metric config rather than the default (<c>cfg: null</c>,
-    /// which falls back to <see cref="GrtConfig.Current"/> — whatever real GRT install, if any,
-    /// happens to sit beside the machine running the suite) so the <see cref="RefUnit.Mm"/>
-    /// below is pinned rather than a hope (ruling F25).</para>
+    /// <para>The <see cref="RefUnit.Mm"/> below is the point of the test, not a detail of it.
+    /// GRT stores this field in millimetres and converts only for display, so there is no
+    /// install to ask and nothing here can become whatever GRT happens to sit beside the
+    /// machine running the suite (ruling F25). Writing it in the install's display units
+    /// instead told an inch-configured GRT that a 1463 mm reference was 2.268 in, and every
+    /// group it measured against that scale came out 25.4x small; see
+    /// <see cref="RoundTripTests.TheDistanceIsWrittenInMetresWhateverTheInstallDisplays"/> for
+    /// the same mistake on the shooting distance, and for the evidence.</para>
     /// </summary>
     [Fact]
     public void TheReferencePointsRecoverThePicturesOwnScale()
     {
         ImportItem item = Item();
         var doc = NewDoc();
-        GrtShotGroupWriter.Add(doc, item, new List<string>(), MetricGrt());
+        GrtShotGroupWriter.Add(doc, item, new List<string>());
         GrtShotGroup tab = doc.ShotGroups().Single();
 
         Assert.Equal(tab.RefP1Y, tab.RefP2Y, 12);     // level: no vertical component at all
@@ -470,21 +455,5 @@ public class GrtShotGroupWriterTests
             return xml.SelectNodes("//note")!.Count;
         }
         finally { File.Delete(path); }
-    }
-
-    /// <summary>An explicit metric GRT install, so a test that asserts against a hardcoded
-    /// <see cref="RefUnit.Mm"/> or <see cref="ShootUnit.Meters"/> is not merely hoping that the
-    /// machine running the suite has no real GRT install of its own (ruling F25).</summary>
-    private static GrtConfig MetricGrt()
-    {
-        string dir = Path.Combine(Path.GetTempPath(), "grt-fake-" + Path.GetRandomFileName());
-        Directory.CreateDirectory(dir);
-        try
-        {
-            File.WriteAllText(Path.Combine(dir, "GordonsReloadingTool.cfg"),
-                "ValueUnits=refdistance=mm;range=m;oal=mm;velocity=m/s\n");
-            return GrtConfig.Load(dir)!;
-        }
-        finally { try { Directory.Delete(dir, true); } catch { /* best effort */ } }
     }
 }

@@ -24,39 +24,36 @@ public class RoundTripTests
     }
 
     /// <summary>
-    /// Every test below writes with this same config and reads back with it, so both halves
-    /// agree by construction and never by accident of whatever GRT install (if any) happens to
-    /// sit beside the machine running the suite (ruling F25). <see cref="Import"/> and
-    /// <see cref="ReadBackAs"/> both take the config as a required argument for exactly that
-    /// reason: neither can silently fall back to <see cref="GrtConfig.Current"/>.
+    /// Every test below reads back as SI, because SI is what the writer emits: GRT stores the
+    /// two unlabelled shot-group numbers in millimetres and metres whatever units it displays
+    /// (see <see cref="GrtShotGroupWriter"/>). Neither half consults a GRT install any more,
+    /// so neither can agree or disagree by accident of whichever install, if any, sits beside
+    /// the machine running the suite (ruling F25).
     /// </summary>
-    private static (GrtLoadDoc Doc, SmString String, List<string> Log) Import(GrtConfig cfg)
+    private static (GrtLoadDoc Doc, SmString String, List<string> Log) Import()
     {
         var log = new List<string>();
         SmString s = FirstString();
         RenderedTarget r = TargetRenderer.Render(s, TargetFaceLibrary.Find(s.FaceId)!);
         var doc = GrtLoadDoc.CreateMinimal("round trip",
             Path.Combine(Path.GetTempPath(), "roundtrip.grtload"));
-        GrtShotGroupWriter.Add(doc, new ImportItem(s, r, 41.5), log, cfg);
+        GrtShotGroupWriter.Add(doc, new ImportItem(s, r, 41.5), log);
         return (doc, s, log);
     }
 
     /// <summary>The shots GRT will keep once flyers are excluded (ruling F1), in written order.</summary>
     private static List<SmShot> Scoring(SmString s) => s.Shots.Where(sh => !sh.IsFlyer).ToList();
 
-    private static GrtShotGroups.Options ReadBackAs(GrtConfig cfg)
-    {
-        var (refUnit, shootUnit) = GrtShotGroups.GrtDefaults(cfg);
-        return new GrtShotGroups.Options(refUnit, shootUnit, ExcludeFlyers: true);
-    }
+    /// <summary>The file as the writer left it: millimetres, metres, flyers excluded.</summary>
+    private static GrtShotGroups.Options AsWritten { get; } =
+        new(RefUnit.Mm, ShootUnit.Meters, ExcludeFlyers: true);
 
     [Fact]
     public void EveryShotComesBackWhereItWent()
     {
-        GrtConfig metric = Metric();
-        var (doc, s, _) = Import(metric);
+        var (doc, s, _) = Import();
 
-        var (groups, log) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        var (groups, log) = GrtShotGroups.FromDoc(doc, AsWritten);
         TargetGroup g = Assert.Single(groups);
 
         // FromDoc reports MOA offsets from the centroid, so compare like with like.
@@ -77,9 +74,8 @@ public class RoundTripTests
     [Fact]
     public void TheGroupKeepsItsRealSize()
     {
-        GrtConfig metric = Metric();
-        var (doc, s, _) = Import(metric);
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        var (doc, s, _) = Import();
+        var (groups, _) = GrtShotGroups.FromDoc(doc, AsWritten);
         TargetGroup g = groups.Single();
 
         double mmPerMoa = GrtShotGroups.MoaMm(s.DistanceMetres);
@@ -99,18 +95,16 @@ public class RoundTripTests
     [Fact]
     public void TheShootingDistanceSurvives()
     {
-        GrtConfig metric = Metric();
-        var (doc, s, _) = Import(metric);
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        var (doc, s, _) = Import();
+        var (groups, _) = GrtShotGroups.FromDoc(doc, AsWritten);
         Assert.Equal(s.DistanceMetres, groups.Single().DistanceM, 1);
     }
 
     [Fact]
     public void TheChargeSurvivesAsTheLadderStep()
     {
-        GrtConfig metric = Metric();
-        var (doc, _, _) = Import(metric);
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        var (doc, _, _) = Import();
+        var (groups, _) = GrtShotGroups.FromDoc(doc, AsWritten);
         Assert.Equal(41.5, groups.Single().ChargeGrains!.Value, 3);
     }
 
@@ -121,7 +115,7 @@ public class RoundTripTests
     [Fact]
     public void RejectsComeBackAsFlyersAndSightersDoNotComeBackAtAll()
     {
-        var (doc, s, _) = Import(Metric());
+        var (doc, s, _) = Import();
         GrtShotGroupSet set = doc.ShotGroups().Single().Groups.Single();
 
         // Shots with no coordinates (IsInvalid => NaN) are never plotted, by the renderer or by
@@ -183,8 +177,7 @@ public class RoundTripTests
     [Fact]
     public void TheExtremeSpreadAgreesWithTheDevicesSelectedGroupNotTheWholeString()
     {
-        GrtConfig metric = Metric();
-        var (doc, s, _) = Import(metric);
+        var (doc, s, _) = Import();
         Assert.Equal("M1 R2 TT11", s.Name); // the fixture's first string, per SmTarReaderTests
         List<SmShot> scoring = Scoring(s);
         Assert.Equal(19, scoring.Count); // the device's own selected group, not all 20 record shots
@@ -192,7 +185,7 @@ public class RoundTripTests
         double deviceMm = s.Stats!.GroupSizeMm!.Value;
         Assert.Equal(336.4045, deviceMm, 3);
 
-        var (groups, _) = GrtShotGroups.FromDoc(doc, ReadBackAs(metric));
+        var (groups, _) = GrtShotGroups.FromDoc(doc, AsWritten);
         TargetGroup g = groups.Single();
         double mmPerMoa = GrtShotGroups.MoaMm(s.DistanceMetres);
         double readBackMm = ExtremeSpreadMm(g.Impacts.Select(i => (i.XMoa * mmPerMoa, i.YMoa * mmPerMoa)));
@@ -234,8 +227,7 @@ public class RoundTripTests
     [Fact]
     public void TheVelocitySeriesReproducesTheDevicesFigures()
     {
-        GrtConfig metric = Metric();
-        var (doc, s, _) = Import(metric);
+        var (doc, s, _) = Import();
 
         List<GrtShot> written = doc.Measurements().Single().Charges[0].Shots;
         var v = written.Select(sh => sh.VelocityMps).ToList();
@@ -261,54 +253,49 @@ public class RoundTripTests
     // ---- the units are GRT's, not ours -------------------------------------------------
 
     /// <summary>
-    /// A GRT install that displays reference distances in inches and ranges in yards reads the
-    /// two unlabelled shot-group numbers in those units. Nothing in the .grtload says which unit
-    /// they are in, so a writer that always emits millimetres and metres is read 25.4x and 1.09x
-    /// adrift — a plausible-looking group with wrong measurements. Same shots, same picture,
-    /// same answer.
+    /// The shooting distance is written in metres however the GRT reading it displays
+    /// distances, because that is how GRT itself writes the field: a tab from an install
+    /// configured <c>range=yard</c> holds <c>shootDistance="914.4"</c> for a 1000 yd string.
+    /// GRT converts on the way to the screen, not on the way to the file.
+    ///
+    /// <para>This test used to assert the opposite — that an imperial install got yards — and
+    /// a real one then showed a 1000 yd string as 1093.61 yd, because the writer divided by
+    /// 0.9144 and GRT divided again. The reference distance went the same way at 25.4x, and
+    /// that number is the scale every group measurement GRT makes is taken against.</para>
+    ///
+    /// <para>So there is no install to write with any more, and this asserts against the
+    /// definition of a yard rather than against <see cref="GrtUnits.MetresPerYard"/>, which
+    /// would only agree with the writer by construction. The companion assertion for the
+    /// reference distance is
+    /// <see cref="GrtShotGroupWriterTests.TheReferencePointsRecoverThePicturesOwnScale"/>,
+    /// which recovers the picture's own mm-per-pixel from it.</para>
+    ///
+    /// <para>Reading it back needs the same SI, which is why <see cref="AsWritten"/> is fixed.
+    /// <see cref="GrtShotGroups.ShootToM"/> in GRT-Reloading-Toolkit instead converts this
+    /// field by the install's own units, so that reader takes an imperial install 1.09x adrift
+    /// from the file GRT wrote — a bug in a different project, and one this writer used to
+    /// match.</para>
     /// </summary>
     [Fact]
-    public void AnImperialGrtReadsTheSameGroupBackAtTheSameScale()
+    public void TheDistanceIsWrittenInMetresWhateverTheInstallDisplays()
     {
+        // The install this would once have been written for, kept to name what no longer
+        // reaches the writer: inches and yards on screen, SI in the file all the same.
         GrtConfig imperial = FakeGrt("refdistance=in;range=yard;oal=in;velocity=ft/s");
         var (refUnit, shootUnit) = GrtShotGroups.GrtDefaults(imperial);
         Assert.Equal(RefUnit.Inch, refUnit);
         Assert.Equal(ShootUnit.Yards, shootUnit);
 
-        GrtConfig metric = Metric();
-        var (metricDoc, s, _) = Import(metric);
-        var (imperialDoc, _, _) = Import(imperial);
+        var (doc, s, _) = Import();
+        Assert.Equal(1000, s.DistanceValue);
+        Assert.Equal("y", s.DistanceUnit);
 
-        // The two files carry different numbers ... The 25.4 and 0.9144 are spelled out here
-        // on purpose: reusing GrtUnits' constants would make this assertion agree with the
-        // writer by construction instead of checking it against the definition of an inch
-        // and a yard.
-        GrtShotGroup mTab = metricDoc.ShotGroups().Single();
-        GrtShotGroup iTab = imperialDoc.ShotGroups().Single();
-        Assert.Equal(mTab.RefDistance / 25.4, iTab.RefDistance, 6);
-        Assert.Equal(mTab.ShootDistance / 0.9144, iTab.ShootDistance, 6);
+        GrtShotGroup tab = doc.ShotGroups().Single();
+        Assert.Equal(1000 * 0.9144, tab.ShootDistance, 6);
 
-        // ... and each is read back by its own GRT to the same real-world group.
-        var (mGroups, _) = GrtShotGroups.FromDoc(metricDoc, ReadBackAs(metric));
-        var (iGroups, _) = GrtShotGroups.FromDoc(imperialDoc, ReadBackAs(imperial));
-
-        Assert.Equal(mGroups.Single().DistanceM, iGroups.Single().DistanceM, 6);
-        Assert.Equal(s.DistanceMetres, iGroups.Single().DistanceM, 3);
-        foreach (var (a, b) in mGroups.Single().Impacts.Zip(iGroups.Single().Impacts))
-        {
-            Assert.Equal(a.XMoa, b.XMoa, 6);
-            Assert.Equal(a.YMoa, b.YMoa, 6);
-        }
+        var (groups, _) = GrtShotGroups.FromDoc(doc, AsWritten);
+        Assert.Equal(s.DistanceMetres, groups.Single().DistanceM, 6);
     }
-
-    /// <summary>
-    /// An explicit metric GRT install — mm reference distances, metre shooting distances —
-    /// constructed the same way <see cref="AnImperialGrtReadsTheSameGroupBackAtTheSameScale"/>
-    /// builds its own imperial one. Every other test in this file uses this instead of the
-    /// convenience of a null config, precisely so it does not silently become whatever GRT
-    /// install (if any) happens to be sitting beside the machine running the suite (ruling F25).
-    /// </summary>
-    private static GrtConfig Metric() => FakeGrt("refdistance=mm;range=m;oal=mm;velocity=m/s");
 
     /// <summary>A GRT install whose only interesting setting is the one we read.</summary>
     private static GrtConfig FakeGrt(string valueUnits)
