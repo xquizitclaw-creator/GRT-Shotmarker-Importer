@@ -22,17 +22,27 @@ namespace ShotMarker.Core.Render;
 /// picture handed to GRT these would be a second set of numerals over the first — the same
 /// figure twice, in two colours, slightly offset. Off for the import, on for the preview,
 /// where nothing else is drawing them and the shooter needs them to pick a shot out.</param>
+/// <param name="DrawSighters">The sighters' own red discs. Off for the picture GRT gets,
+/// because the points written into the load leave the sighters out — see
+/// <see cref="Sm.SmShot.IsImported"/> for why there is nothing to write them as. The two have
+/// to move together or the face grows discs with no hit under them. On for the preview, where
+/// the shot list beside it names them as sighters and the caption says they are not imported,
+/// so the shooter can see where they went without being shown a target they will not get.
+/// Dropping them also keeps a sighter thrown a metre wide from rescaling a picture it does not
+/// appear on.</param>
 public sealed record RenderOptions(
     double PixelsPerMm = 0.6, double MarginMm = 25, bool DrawFurniture = true,
-    bool DrawText = true, bool DrawShotNumbers = true)
+    bool DrawText = true, bool DrawShotNumbers = true, bool DrawSighters = true)
 {
     /// <summary>The picture written into the load. GRT numbers the points itself, so this one
-    /// does not.</summary>
-    public static RenderOptions ForGrt { get; } = new() { DrawShotNumbers = false };
+    /// does not, and the load holds no sighters, so this one draws none.</summary>
+    public static RenderOptions ForGrt { get; } =
+        new() { DrawShotNumbers = false, DrawSighters = false };
 
     /// <summary>The picture shown in the import window. Identical to <see cref="ForGrt"/> but
-    /// for the disc numbers, which only this one draws, because here there is no GRT
-    /// underneath to draw them.</summary>
+    /// for the disc numbers, which only this one draws because here there is no GRT underneath
+    /// to draw them, and the sighters, which only this one draws because here they are
+    /// something to look at rather than something to import.</summary>
     public static RenderOptions ForPreview { get; } = new();
 }
 

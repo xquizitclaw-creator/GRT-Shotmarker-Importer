@@ -142,15 +142,27 @@ public static class GrtShotGroupWriter
 
         // AddShotGroup formats coordinates with ToString("R"), which writes the literal "NaN"
         // without complaint — GRT then parses it back as 0 and plants a phantom hit in the
-        // corner of the picture. SmShot.IsPlottable is the same predicate TargetRenderer
-        // filters on, so the points written are exactly the discs drawn.
-        var plottable = s.Shots.Where(sh => sh.IsPlottable).ToList();
-        var dropped = s.Shots.Select(sh => sh.Number).Except(plottable.Select(sh => sh.Number)).ToList();
+        // corner of the picture. SmShot.IsImported carries that guard and the sighters (which
+        // the load has no way to hold; see the predicate), and it is the same predicate
+        // RenderOptions.ForGrt draws with, so the points written are exactly the discs drawn.
+        var plottable = s.Shots.Where(sh => sh.IsImported).ToList();
+        // Reported over the record shots alone. A sighter is already accounted for by the line
+        // above it, and one that also happens to have no coordinates is not a second loss.
+        var record = s.Shots.Where(sh => !sh.IsSighter).ToList();
+        var dropped = record.Select(sh => sh.Number).Except(plottable.Select(sh => sh.Number)).ToList();
+        int sighters = s.Shots.Count - record.Count;
+        if (sighters > 0)
+            log.Add($"'{s.Name}': {sighters} sighter(s) — left out, GRT has nowhere to put them");
         if (dropped.Count > 0)
             log.Add($"'{s.Name}': {dropped.Count} shot(s) with no coordinates — not plotted");
         if (plottable.Count == 0)
         {
-            log.Add($"'{s.Name}': no shot has coordinates — not imported");
+            // Two different stories, and "no shot has coordinates" told the wrong one for the
+            // first: a string of nothing but sighters is a perfectly good warm-up the import
+            // has no record shot to carry, not a string the plugin failed to read.
+            log.Add(record.Count == 0
+                ? $"'{s.Name}': every shot is a sighter — nothing to import"
+                : $"'{s.Name}': no record shot has coordinates — not imported");
             return null;
         }
 
@@ -237,6 +249,21 @@ public static class GrtShotGroupWriter
         return charge;
     }
 
+    /// <summary>What the string holds besides plain record shots, as the parenthesised tail of
+    /// the note's "Shots:" line — empty when it holds only those. Sighters are counted as left
+    /// out because they are: nothing in the tab corresponds to them.</summary>
+    private static string Breakdown(SmString s)
+    {
+        int sighters = s.Shots.Count(sh => sh.IsSighter);
+        // !IsSighter so the two clauses never count one shot twice: a sighter the device also
+        // flagged invalid is reported once, as the sighter it is.
+        int excluded = s.Shots.Count(sh => !sh.IsSighter && (sh.IsInvalid || sh.IsExcludedOnDevice));
+        var parts = new List<string>();
+        if (sighters > 0) parts.Add($"{sighters} sighter{(sighters > 1 ? "s" : "")}, left out");
+        if (excluded > 0) parts.Add($"{excluded} invalid/excluded");
+        return parts.Count == 0 ? "" : " (" + string.Join("; ", parts) + ")";
+    }
+
     /// <summary>This string's block of the import note.</summary>
     private static string NoteText(SmString s, IReadOnlyList<int> dropped)
     {
@@ -255,9 +282,12 @@ public static class GrtShotGroupWriter
             // that line only appears when the export carries a group at all, so without one a
             // struck-out cross-fire vanished from both — "Shots: 20 (2 sighter/invalid)"
             // printed beside a GRT group of 17, with nothing naming the missing three.
-            $"Shots:      {s.Shots.Count} " +
-            $"({s.Shots.Count(sh => sh.IsSighter || sh.IsInvalid || sh.IsExcludedOnDevice)} " +
-            "sighter/invalid/excluded)",
+            //
+            // The sighters get their own clause rather than sharing that count: they are the
+            // one category the tab does not hold at all, and one number covering both fates
+            // would describe a shot GRT has as a flyer and a shot GRT has never seen as the
+            // same thing.
+            $"Shots:      {s.Shots.Count}{Breakdown(s)}",
         };
         if (s.ScoreText is { Length: > 0 }) lines.Add($"Score:      {s.ScoreText}");
 
@@ -271,16 +301,41 @@ public static class GrtShotGroupWriter
             lines.Add($"Excluded on import: shot{(struckOut.Count > 1 ? "s" : "")} " +
                       string.Join(", ", struckOut.Select(n => n.ToString(ic))));
 
-        // Said here because the picture can no longer say it. GRT prints its own number
-        // beside every hit it holds, counting them from one, and that is the only numbering
-        // on the imported picture (RenderOptions.DrawShotNumbers). While every shot is
-        // plotted those labels are ShotMarker's numbers; drop one and everything after it
-        // shifts, and the shot numbers named elsewhere in this note stop matching the plot.
+        // Why the shooter's five sighters are not in the tab they just imported. Said in the
+        // note because nothing else can say it: the tab itself simply holds fifteen hits, and
+        // a shooter counting discs against their scorecard is owed the reason rather than left
+        // to work it out.
+        var sighters = s.Shots.Where(sh => sh.IsSighter).Select(sh => sh.Number).ToList();
+        if (sighters.Count > 0)
+            lines.Add($"Sighters:   shot{(sighters.Count > 1 ? "s" : "")} " +
+                      string.Join(", ", sighters.Select(n => n.ToString(ic))) +
+                      " — not imported. A GRT hit is a scoring shot or a flyer, and a sighter " +
+                      "is neither.");
+
         if (dropped.Count > 0)
             lines.Add($"Not plotted: shot{(dropped.Count > 1 ? "s" : "")} " +
                       string.Join(", ", dropped.Select(n => n.ToString(ic))) +
-                      " — no coordinates. GRT numbers the hits it holds from 1, so past " +
-                      "these its labels no longer match the shot numbers above.");
+                      " — no coordinates.");
+
+        // Said here because the picture can no longer say it. GRT prints its own number
+        // beside every hit it holds, counting them from one, and that is the only numbering
+        // on the imported picture (RenderOptions.DrawShotNumbers). While every shot is
+        // plotted those labels are ShotMarker's numbers; leave one out and everything after
+        // it shifts, and the shot numbers named elsewhere in this note stop matching the
+        // plot. Sighters shift it by definition — they are always left out, and they come
+        // first — so naming GRT's first hit is the one fact that makes the rest readable.
+        if (sighters.Count > 0 || dropped.Count > 0)
+        {
+            int first = s.Shots.First(sh => sh.IsImported).Number;
+            // Sighters alone shift the whole run by a constant — GRT's #1 is shot 6, #2 is shot
+            // 7, and a shooter told where the count starts can read the rest off. A shot missing
+            // from the middle is the harder case and keeps the stronger warning.
+            lines.Add($"GRT numbers the hits it holds from 1: its #1 is shot {first.ToString(ic)} above"
+                      + (dropped.Count > 0
+                         ? ". Past a shot it does not hold, its labels no longer match the shot "
+                           + "numbers above."
+                         : ", and the rest follow in order."));
+        }
 
         if (s.Stats is { } st)
         {

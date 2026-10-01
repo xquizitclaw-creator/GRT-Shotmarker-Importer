@@ -127,15 +127,15 @@ public class ShotCurationTests
         finally { File.Delete(path); }
     }
 
-    /// <summary>The count line names device exclusions. A shot the shooter struck out is not
-    /// one, and is reported on its own line — otherwise "sighter/invalid/excluded" would
-    /// quietly absorb it and the two kinds of exclusion become indistinguishable.</summary>
+    /// <summary>The count line names what the device left out. A shot the shooter struck out is
+    /// not one, and is reported on its own line — otherwise that clause would quietly absorb it
+    /// and the two kinds of exclusion become indistinguishable.</summary>
     [Fact]
     public void TheDeviceExclusionCountIgnoresTheShootersOwn()
     {
         SmString s = FirstString();
         var (curated, _) = WithOneStruckOut(s);
-        int devices = s.Shots.Count(sh => sh.IsSighter || sh.IsInvalid || sh.IsExcludedOnDevice);
+        int sighters = s.Shots.Count(sh => sh.IsSighter);
 
         var doc = NewDoc();
         GrtShotGroupWriter.Add(doc, Item(curated), new List<string>());
@@ -143,7 +143,9 @@ public class ShotCurationTests
         try
         {
             doc.Save(path);
-            Assert.Contains($"({devices} sighter/invalid/excluded)", NoteText(path));
+            string text = NoteText(path);
+            Assert.Contains($"({sighters} sighters, left out)", text);
+            Assert.Contains("Excluded on import: shot", text);
         }
         finally { File.Delete(path); }
     }

@@ -47,6 +47,23 @@ public sealed record SmShot(
     /// the canvas to nothing and kills the render outright. So both facts are one predicate,
     /// checked in the one place, by everything that reads <see cref="XMm"/>.</para></summary>
     public bool IsPlottable => !IsInvalid && double.IsFinite(XMm) && double.IsFinite(YMm);
+
+    /// <summary>Whether this shot is one of the hits the import hands GRT: a shot with a
+    /// drawable position that is not a sighter.
+    ///
+    /// <para>A GRT shot point carries one exclusion bit and nothing else — scoring shot or
+    /// flyer, with flyer being GRT's own word for a reject it prints beside the hit as
+    /// "Flyer #N". There is no third state to write a sighter as. Written as scoring shots
+    /// they would wreck the group; written as flyers they would label shots the shooter fired
+    /// on purpose, to find the wind, as rejects — and in a Match 1 string, where sighters are
+    /// unlimited, that labelling is most of the tab. So they are left out of the load instead,
+    /// and GRT's tab holds the record shots alone.</para>
+    ///
+    /// <para>The renderer filters on this too (<c>RenderOptions.DrawSighters</c> is off for
+    /// the picture GRT gets), which is what keeps the discs drawn and the points written the
+    /// same set. Sighters stay in <see cref="SmString.Shots"/> throughout: the import window
+    /// lists them, its preview draws them, and the note counts them.</para></summary>
+    public bool IsImported => IsPlottable && !IsSighter;
 }
 
 /// <summary>ShotMarker's own computed statistics for a group, carried through unaltered

@@ -185,7 +185,9 @@ public class GrtShotGroupWriterTests
             }
 
             // The two coordinate-less shots are absent from the picture's hits, and said so.
-            Assert.Equal(real.Shots.Count(sh => !sh.IsInvalid),
+            // So are the five sighters: SmShot.IsImported is the predicate the hits come from,
+            // and it is !IsInvalid with the sighters taken out.
+            Assert.Equal(real.Shots.Count(sh => sh.IsImported),
                          tab.Groups.Single().Points.Count);
             Assert.Contains(log, l => l.Contains("no coordinates"));
         }
@@ -225,13 +227,18 @@ public class GrtShotGroupWriterTests
     }
 
     /// <summary>
-    /// F28: the note's "Shots: N (K sighter/invalid/excluded)" label must count exactly what
-    /// it names. Task 9b widened <see cref="SmShot.IsFlyer"/> to also cover a valid record shot
-    /// ShotMarker's own group left out, so counting <c>IsFlyer</c> here (as the line used to)
-    /// would claim M1 R2 TT11 has six such shots when it has five. That sixth shot is shot 11 —
-    /// genuine and scoring — already reported honestly, and separately, by the
-    /// "{inGroup} of {recordShots} record shots" line pinned below. Device-excluded shots ARE
-    /// counted here, because that second line only exists when the export carries a group.
+    /// F28: the note's "Shots: N (...)" label must count exactly what it names. Task 9b widened
+    /// <see cref="SmShot.IsFlyer"/> to also cover a valid record shot ShotMarker's own group
+    /// left out, so counting <c>IsFlyer</c> here (as the line used to) would claim M1 R2 TT11
+    /// has six such shots when it has five. That sixth shot is shot 11 — genuine and scoring —
+    /// already reported honestly, and separately, by the "{inGroup} of {recordShots} record
+    /// shots" line pinned below.
+    ///
+    /// <para>M1 R2 TT11's five are its five Match 1 sighters, and the clause says they were left
+    /// out, which is now the literal truth of the tab: the group holds its 20 record shots and
+    /// nothing else. A shot the DEVICE excluded would be counted in the clause beside it, which
+    /// exists because that "of 20 record shots" line only appears when the export carries a
+    /// group at all.</para>
     /// </summary>
     [Fact]
     public void TheShotCountLabelCountsExactlyWhatItNames()
@@ -243,10 +250,60 @@ public class GrtShotGroupWriterTests
         {
             doc.Save(path);
             string text = NoteText(path);
-            Assert.Contains("(5 sighter/invalid/excluded)", text);
+            Assert.Contains("Shots:      25 (5 sighters, left out)", text);
             Assert.Contains("19 of 20 record shots", text);
         }
         finally { File.Delete(path); }
+    }
+
+    /// <summary>The whole point of the change: a GRT hit is a scoring shot or a flyer, and
+    /// "Flyer #1" is what GRT printed beside the shooter's first Match 1 sighter for as long as
+    /// the sighters were written. So they are not written — the tab holds the 20 record shots,
+    /// numbered by GRT from 1, and the note says where its #1 came from.</summary>
+    [Fact]
+    public void SightersAreLeftOutOfTheGroupAndTheNoteSaysSo()
+    {
+        SmString s = FirstString();
+        Assert.Equal(5, s.Shots.Count(sh => sh.IsSighter));
+
+        var doc = NewDoc();
+        var log = new List<string>();
+        GrtShotGroupWriter.Add(doc, Item(s), log);
+
+        GrtShotGroupSet set = Assert.Single(doc.ShotGroups().Single().Groups);
+        Assert.Equal(s.Shots.Count(sh => !sh.IsSighter), set.Points.Count);
+        Assert.Contains(log, l => l.Contains("5 sighter(s) — left out"));
+
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".grtload");
+        try
+        {
+            doc.Save(path);
+            string text = NoteText(path);
+            Assert.Contains("Sighters:   shots 1, 2, 3, 4, 5 — not imported", text);
+            Assert.Contains("its #1 is shot 6 above, and the rest follow in order", text);
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>A string that is nothing but sighters — a warm-up, or Match 1 before the first
+    /// shot that counts. There is nothing to import, and saying "no shot has coordinates" about
+    /// it would blame the reader for a string it read perfectly.</summary>
+    [Fact]
+    public void AStringOfNothingButSightersIsReportedAsSuch()
+    {
+        SmString s = FirstString();
+        SmString warmUp = s with
+        {
+            Name = "warm-up",
+            Shots = s.Shots.Select(sh => sh with { IsSighter = true }).ToList(),
+        };
+
+        var doc = NewDoc();
+        var log = new List<string>();
+        GrtShotGroupWriter.Add(doc, Item(warmUp), log);
+
+        Assert.Empty(doc.ShotGroups());
+        Assert.Contains(log, l => l.Contains("every shot is a sighter — nothing to import"));
     }
 
     /// <summary>The decoded text of the single &lt;note&gt; in a saved load.</summary>
@@ -365,7 +422,7 @@ public class GrtShotGroupWriterTests
 
         Assert.Single(doc.ShotGroups());
         Assert.Equal($"ShotMarker — {good.Name}", doc.ShotGroups().Single().Title);
-        Assert.Contains(log, l => l.Contains("no shot has coordinates"));
+        Assert.Contains(log, l => l.Contains("no record shot has coordinates"));
     }
 
     /// <summary>The note has to say which shots were left off the picture. GRT prints its own
@@ -375,7 +432,9 @@ public class GrtShotGroupWriterTests
     public void TheNoteNamesTheShotsThatCouldNotBePlotted()
     {
         SmString s = FirstString();
-        int lost = s.Shots[2].Number;
+        // A record shot, not s.Shots[2]: the first five are Match 1 sighters, which are left
+        // out whatever their coordinates say, so holing one would prove nothing about this line.
+        int lost = s.Shots.First(sh => !sh.IsSighter).Number;
         SmString holed = s with
         {
             Shots = s.Shots
@@ -394,6 +453,7 @@ public class GrtShotGroupWriterTests
             string text = Uri.UnescapeDataString(
                 ((System.Xml.XmlElement)xml.SelectSingleNode("//note")!).GetAttribute("text"));
             Assert.Contains($"Not plotted: shot {lost}", text);
+            Assert.Contains("no coordinates", text);
             Assert.Contains("no longer match the shot numbers above", text);
         }
         finally { File.Delete(path); }

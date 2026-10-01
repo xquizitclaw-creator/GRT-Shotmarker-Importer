@@ -41,7 +41,12 @@ public static class TargetRenderer
         // Filtered before XMm/YMm is touched anywhere — see SmShot.IsPlottable. A bounding
         // box is not a place a NaN passes through quietly: one such shot poisons the extent,
         // and therefore the scale, for the entire picture.
-        var plottable = s.Shots.Where(sh => sh.IsPlottable).ToList();
+        //
+        // SmShot.IsImported is IsPlottable without the sighters, and it is the same predicate
+        // GrtShotGroupWriter writes points with, so the picture GRT gets shows exactly the
+        // hits GRT holds. The filter runs ahead of the extent on purpose: a sighter dropped
+        // from the drawing must not size the canvas it is not drawn on either.
+        var plottable = s.Shots.Where(sh => o.DrawSighters ? sh.IsPlottable : sh.IsImported).ToList();
 
         // Ruling S1: the base extent is the board's own true mm size — no padding added
         // unconditionally. It only grows if a shot needs more room than the board gives it.

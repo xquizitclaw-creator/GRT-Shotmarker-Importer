@@ -331,16 +331,26 @@ internal sealed class ImportForm : Form
 
     /// <summary>The device's own figures are shown here as they are in the note, and carry the
     /// same qualifier once a shot has been struck out: they measured the string ShotMarker
-    /// saw, which is no longer the group being imported.</summary>
+    /// saw, which is no longer the group being imported.
+    ///
+    /// <para>The sighter count is here for the one place this window differs from the import:
+    /// the preview draws the sighters (RenderOptions.ForPreview) and the load cannot hold them,
+    /// so the picture above has discs the GRT tab will not. Saying so is what keeps that from
+    /// being a surprise — the shooter should be able to see where their sighters went and still
+    /// know what they are about to get.</para></summary>
     private static string CaptionFor(SmString s)
     {
         var ic = CultureInfo.CurrentCulture;
+        int sighters = s.Shots.Count(sh => sh.IsSighter);
+        string sight = sighters > 0
+            ? $"   ·   {sighters} sighter{(sighters > 1 ? "s" : "")} (red, not imported)"
+            : "";
         string stats = s.Stats is { } st && st.GroupSizeMm is { } g
             ? $"   ·   ShotMarker: group {g.ToString("0.0", ic)} mm"
               + (st.VelocitySdMps is { } sd ? $", sd {sd.ToString("0.0", ic)} m/s" : "")
               + (s.Shots.Any(sh => sh.IsExcludedByUser) ? " (full string, before strike-outs)" : "")
             : "";
-        return $"{s.Name}   ·   {CountedText(s)} shots   ·   {s.FaceId}{stats}";
+        return $"{s.Name}   ·   {CountedText(s)} shots{sight}   ·   {s.FaceId}{stats}";
     }
 
     /// <summary>Draws the string on the face the import will use. ImportJob.ResolveFace is

@@ -238,12 +238,15 @@ public class TargetRendererTests
     /// must not carry numbers of its own, or the shooter reads every figure twice, in two
     /// colours, slightly apart. The preview keeps them: nothing else is drawing them there.
     ///
+    /// <para>The sighters' discs are the other difference: the load holds no sighter
+    /// (SmShot.IsImported), so the picture it carries draws none either.</para>
+    ///
     /// <para>Asserting the difference is confined to the discs is the point — "the two
     /// pictures differ" would also pass if the numbers were still there and something else
     /// had changed.</para>
     /// </summary>
     [Fact]
-    public void TheImportPictureCarriesNoShotNumbersWhileThePreviewDoes()
+    public void TheImportPictureCarriesNoShotNumbersOrSightersWhileThePreviewDoes()
     {
         SmString s = FirstString();
         TargetFace face = TargetFaceLibrary.Find(s.FaceId)!;
@@ -253,12 +256,21 @@ public class TargetRendererTests
 
         using SKBitmap grt = SKBitmap.Decode(forGrt.Png);
         using SKBitmap preview = SKBitmap.Decode(forPreview.Png);
+        // Same canvas: every shot in this fixture, sighters included, lands inside the board,
+        // so leaving the sighters out of the import's picture does not change the extent. A
+        // sighter thrown clear of the board legitimately would — it grows the preview it is
+        // drawn on and not the import it is absent from — and that is a difference this
+        // comparison could not make sense of, which is why it is pinned on this fixture.
         Assert.Equal(preview.Width, grt.Width);
         Assert.Equal(preview.Height, grt.Height);
 
-        // The renderer's own disc geometry, plus a pixel of antialiasing slack.
+        // The renderer's own disc geometry: the filled circle, the white edge stroke drawn
+        // centred on its rim (so half of it lies outside the radius), and a pixel of
+        // antialiasing slack. A whole disc missing from one picture reaches further than the
+        // numeral inside it ever did.
         TargetProjection p = forGrt.Projection;
-        float reach = Math.Max(p.Px((s.BulletDiameterMm ?? 7.2) / 2), 8) + 1;
+        float discRadius = Math.Max(p.Px((s.BulletDiameterMm ?? 7.2) / 2), 8);
+        float reach = discRadius + Math.Max(1, discRadius / 6) / 2 + 1;
         var centres = s.Shots
             .Where(sh => !sh.IsInvalid && double.IsFinite(sh.XMm) && double.IsFinite(sh.YMm))
             .Select(sh => p.ToPixel(sh.XMm, sh.YMm))
@@ -278,6 +290,16 @@ public class TargetRendererTests
 
         Assert.True(differing > 0, "the import picture is identical to the preview — the "
                                  + "numbers are still being drawn into the load");
+
+        // Sighter discs are the larger half of that difference, and they are gone from the
+        // import picture entirely: the pixel at each sighter's centre is the face underneath,
+        // not a disc. Without this the test would still pass with the discs intact and only
+        // their numerals removed.
+        foreach (SmShot sighter in s.Shots.Where(sh => sh.IsSighter && sh.IsPlottable))
+        {
+            var (x, y) = p.ToPixel(sighter.XMm, sighter.YMm);
+            Assert.NotEqual(preview.GetPixel((int)x, (int)y), grt.GetPixel((int)x, (int)y));
+        }
     }
 
     /// <summary>The presets are the only two callers should need, so the defaults have to be
@@ -289,10 +311,17 @@ public class TargetRendererTests
         Assert.True(new RenderOptions().DrawShotNumbers);
         Assert.True(RenderOptions.ForPreview.DrawShotNumbers);
         Assert.False(RenderOptions.ForGrt.DrawShotNumbers);
+        Assert.True(new RenderOptions().DrawSighters);
+        Assert.True(RenderOptions.ForPreview.DrawSighters);
+        Assert.False(RenderOptions.ForGrt.DrawSighters);
 
-        // Only that one flag differs — the preview must be the same picture, same face, same
-        // furniture, or the shooter is approving a target they will not get.
-        Assert.Equal(RenderOptions.ForPreview with { DrawShotNumbers = false }, RenderOptions.ForGrt);
+        // Only those two flags differ — the preview must be the same picture, same face, same
+        // furniture, or the shooter is approving a target they will not get. The two it may
+        // differ in are both things GRT's own tab supplies or refuses: it draws its own numbers,
+        // and it cannot hold a sighter at all (SmShot.IsImported). The window says so in its
+        // caption, which is what keeps the extra discs from being a surprise.
+        Assert.Equal(RenderOptions.ForPreview with { DrawShotNumbers = false, DrawSighters = false },
+                     RenderOptions.ForGrt);
     }
 
     /// <summary>

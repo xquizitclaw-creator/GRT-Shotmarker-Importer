@@ -114,18 +114,28 @@ public class RoundTripTests
         Assert.Equal(41.5, groups.Single().ChargeGrains!.Value, 3);
     }
 
+    /// <summary>What a GRT flyer is, after the sighters stopped being written as one: a record
+    /// shot the device or the shooter left out of the group. A sighter is not in the file at all
+    /// to be labelled — "Flyer #1" over the shooter's first Match 1 sighter is the defect this
+    /// pair of assertions pins shut from both ends.</summary>
     [Fact]
-    public void SightersAndRejectsComeBackAsFlyers()
+    public void RejectsComeBackAsFlyersAndSightersDoNotComeBackAtAll()
     {
         var (doc, s, _) = Import(Metric());
-        GrtShotGroup tab = doc.ShotGroups().Single();
+        GrtShotGroupSet set = doc.ShotGroups().Single().Groups.Single();
 
-        // Shots with no coordinates (IsInvalid => NaN) are never plotted, by the renderer or
-        // by the writer, so the flyers that survive into the file are the sighters.
-        Assert.Equal(s.Shots.Count(sh => !sh.IsInvalid && sh.IsFlyer),
-                     tab.Groups.Single().Points.Count(p => p.Flyer && !p.PointOfAim));
-        Assert.True(tab.Groups.Single().Points.Count(p => p.Flyer) > 0,
-            "the fixture is supposed to contain sighters — this test would otherwise prove nothing");
+        // Shots with no coordinates (IsInvalid => NaN) are never plotted, by the renderer or by
+        // the writer, and nor is a sighter — so what is left to come back as a flyer is a record
+        // shot ShotMarker's own group left out. The fixture has exactly one: shot 11.
+        Assert.Equal(s.Shots.Count(sh => sh.IsImported && sh.IsFlyer),
+                     set.Points.Count(p => p.Flyer && !p.PointOfAim));
+        Assert.True(set.Points.Count(p => p.Flyer) > 0,
+            "the fixture is supposed to contain a shot left out of the group — this test would "
+            + "otherwise prove nothing");
+
+        // And the sighters are simply gone: five of them, 25 shots read, 20 hits written.
+        Assert.Equal(5, s.Shots.Count(sh => sh.IsSighter));
+        Assert.Equal(s.Shots.Count(sh => !sh.IsSighter), set.Points.Count);
     }
 
     // ---- task 9b: honour ShotMarker's group selection ----------------------------------
