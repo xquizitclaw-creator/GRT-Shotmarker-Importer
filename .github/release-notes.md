@@ -4,6 +4,15 @@
 
 ## What's new
 
+### 0.1.2
+
+Fixes the shooting distance and the group scale on a GRT set to imperial units. GRT stores both
+numbers in millimetres and metres whatever it displays, and converts them on the way to the screen;
+the plugin was converting them first, so GRT converted twice. A 1000 yard string came in as 1093.61
+yards, and — worse, because it is the scale every group measurement is taken against — the
+reference distance came in 25.4x small. If you imported on an imperial GRT with 0.1.0 or 0.1.1,
+those tabs are wrong and worth importing again. A metric GRT was never affected.
+
 ### 0.1.1
 
 Sighters are left out of the load instead of being written as flyers. A GRT shot point is either a
