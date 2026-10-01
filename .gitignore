@@ -33,3 +33,7 @@ smtest/
 # ShotMarker's own UI, the second carries a share token for someone else's service in its
 # filename, and this repo is public. Local only. Ruling F31.
 Screenshots/
+
+# Drafts kept beside the project while working - the Discord announcement text, notes to
+# myself. Not part of the plugin and not something a public repo needs; local only.
+scratchpad/
