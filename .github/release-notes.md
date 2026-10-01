@@ -1,7 +1,17 @@
-<!-- The stable part of every release's notes. The release workflow fills in {{ZIP}}, {{SHA}} and
-     {{MB}} from the file it built, and {{WHATS_NEW}} from the tag's own message — so what changed
-     in a release is written once, in the tag, and the rest of this is edited here rather than
-     inside a YAML string. -->
+<!-- The release page's prose. The workflow fills in the zip's name, size and hash where the
+     doubled-brace tokens are, and publishes the rest of this file verbatim. The What's new
+     section is updated by hand in the same commit that bumps the version. -->
+
+## What's new
+
+First release.
+
+Reads ShotMarker's `.tar` session archives and its `.csv` shot logs, and knows the 208 target
+faces ShotMarker itself ships, so the face your string was shot on is the face GRT draws.
+
+Pair- and triple-fire frames are handled: the import window asks which firing point was yours,
+and the other shooters on the frame stay out of your load. Checked end to end against a real
+two-up export — six strings at 1000 yards, both shooters on one sensor frame.
 
 ## Install
 
@@ -21,10 +31,8 @@ import. GRT opens a new load beside the one you had open, with one shot-group ta
 scoring face drawn to scale, every hit placed on it, the velocities measured, and a note carrying
 ShotMarker's own group statistics.
 
-Your original load file is never modified. Pair- and triple-fire frames are handled: pick which
-firing point was yours, and the other shooters' strings stay out of your load.
-
-{{WHATS_NEW}}
+Your original load file is never modified. Only the three most recent imports from a given load are
+kept, so trial runs don't pile up; rename one to keep it for good.
 
 ---
 

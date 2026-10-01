@@ -58,10 +58,11 @@ powershell -File tools/build-plugin.ps1 -GrtDir "C:\Users\you\GordonsReloadingTo
 powershell -File tools/build-plugin.ps1 -SelfContained
 ```
 
-Releases are built by `.github/workflows/release.yml`, not by hand: pushing an annotated tag
-whose version matches `Directory.Build.props` builds the self-contained folder on a Windows
-runner, zips it, and publishes it with the zip's SHA-256 in the notes. The tag's message becomes
-the release's “what's new” section.
+Releases are built by `.github/workflows/release.yml`, not by hand: pushing a tag whose version
+matches `Directory.Build.props` builds the self-contained folder on a Windows runner, zips it, and
+publishes it with the zip's SHA-256 in the notes. The release page's text is
+`.github/release-notes.md`, including its “what's new” section — update it in the commit that
+bumps the version.
 
 `tools/extract-targetfaces.js` regenerates `ShotMarkerCore/Faces/targetfaces.json` — the 208
 target faces — from ShotMarker's own web bundle. That bundle is ShotMarker's copyrighted code

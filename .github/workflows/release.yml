@@ -61,39 +61,47 @@ jobs:
           "mb=$mb"    >> $env:GITHUB_OUTPUT
         id: zip
 
-      # The notes body lives in .github/release-notes.md, not in a string in here: a release
-      # page is read by people deciding whether to trust a 65 MB download, and prose is easier
-      # to get right in a markdown file than inside YAML inside PowerShell. Both ends of the
-      # encoding are stated explicitly, because the default differs between PowerShell versions
-      # and the text has em dashes in it.
+      # The notes body lives in .github/release-notes.md, not in a string in here: a release page
+      # is read by people deciding whether to trust a 68 MB download, and prose is easier to get
+      # right in a markdown file than inside YAML inside PowerShell. Only the facts about the file
+      # just built are substituted in. What changed in a release is written by hand in that same
+      # file, not pulled out of the tag — two attempts to read it from the tag produced two
+      # different wrong answers, because `git tag --format=%(contents)` gives the tagged commit's
+      # message rather than the tag's own whenever the ref reaches the runner lightweight, and
+      # %(contents:body) silently drops the first line even when it does not.
       - name: Write the release notes
         shell: pwsh
         run: |
-          $tag = '${{ github.ref_name }}'
-          # The tag's whole message becomes the "what's new" section. %(contents), not
-          # %(contents:body) — the body is everything *after* the subject line, so a three-line
-          # tag message loses its first line, which is the line most likely to say what changed.
-          # The heading is added here rather than written in the tag, because git strips every
-          # line starting with '#' when it cleans up a tag message. A lightweight tag has no
-          # message at all, and then the notes carry no such section rather than an empty one.
-          $what = ((git tag -l --format='%(contents)' $tag) -join "`n").Trim()
-          if ($what) { $what = "## What's new`n`n$what" }
-
+          # Both ends of the encoding are explicit: the default differs between PowerShell
+          # versions, and this text has em dashes in it.
           $notes = (Get-Content .github/release-notes.md -Raw -Encoding utf8).
-                     Replace('{{ZIP}}',        '${{ steps.zip.outputs.zip }}').
-                     Replace('{{SHA}}',        '${{ steps.zip.outputs.sha }}').
-                     Replace('{{MB}}',         '${{ steps.zip.outputs.mb }}').
-                     Replace('{{WHATS_NEW}}',  $what.Trim())
+                     Replace('{{ZIP}}', '${{ steps.zip.outputs.zip }}').
+                     Replace('{{SHA}}', '${{ steps.zip.outputs.sha }}').
+                     Replace('{{MB}}',  '${{ steps.zip.outputs.mb }}')
           if ($notes -match '\{\{\w+\}\}') { throw "unfilled placeholder in the release notes: $($Matches[0])" }
           [System.IO.File]::WriteAllText("$PWD/notes.md", $notes, (New-Object System.Text.UTF8Encoding $false))
           Get-Content notes.md
 
+      # Updates an existing release rather than failing on one. A run can publish and then fail
+      # afterwards, or be cancelled too late to stop it, and then the natural next move is to
+      # re-run — which `gh release create` refuses, because the release it would create is
+      # already there.
       - name: Publish
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create '${{ github.ref_name }}'
-          '${{ steps.zip.outputs.zip }}'
-          --title 'ShotMarker Import ${{ github.ref_name }}'
-          --notes-file notes.md
+        run: |
+          $tag   = '${{ github.ref_name }}'
+          $zip   = '${{ steps.zip.outputs.zip }}'
+          $title = "ShotMarker Import $tag"
+          gh release view $tag > $null 2>&1
+          if ($LASTEXITCODE -eq 0) {
+            Write-Host "==> $tag exists; updating it"
+            gh release edit   $tag --title $title --notes-file notes.md
+            if ($LASTEXITCODE -ne 0) { throw "gh release edit failed with exit code $LASTEXITCODE" }
+            gh release upload $tag $zip --clobber
+            if ($LASTEXITCODE -ne 0) { throw "gh release upload failed with exit code $LASTEXITCODE" }
+          } else {
+            gh release create $tag $zip --title $title --notes-file notes.md
+            if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE" }
+          }
