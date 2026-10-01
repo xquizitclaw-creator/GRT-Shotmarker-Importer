@@ -4,6 +4,17 @@
 
 ## What's new
 
+### 0.1.1
+
+Sighters are left out of the load instead of being written as flyers. A GRT shot point is either a
+scoring shot or a flyer — GRT's own word for a reject, which it prints beside the hit — and a
+sighter is neither. In a Match 1 string, where sighters are unlimited, writing them as flyers
+labelled most of the tab as rejects. Now the tab holds your record shots alone, numbered from #1,
+and the note names the sighters it dropped and where GRT's numbering starts. The import window
+still draws them in red, so you can see where they went before you import.
+
+### 0.1.0
+
 First release.
 
 Reads ShotMarker's `.tar` session archives and its `.csv` shot logs, and knows the 208 target
