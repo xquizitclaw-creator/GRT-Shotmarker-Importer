@@ -6,11 +6,12 @@
 
     ./dist/ShotMarker/   framework-dependent by default — needs the .NET 8 Desktop Runtime on
                          the GRT machine. With -SelfContained it carries its own copy of .NET
-                         and needs nothing installed, at about eighty times the size.
+                         and needs nothing installed, at about fifteen times the size.
 
-  Releases are self-contained. A shooter following a Discord link to a plugin has no reason to
-  expect a runtime install first, and GRT listing a plugin it cannot start looks broken rather
-  than unconfigured. Development uses the default: a few hundred KB, and it copies to a test
+  A release ships both: a shooter following a Discord link to a plugin has no reason to expect a
+  runtime install first, and GRT listing a plugin it cannot start looks broken rather than
+  unconfigured — but a machine that already has the runtime should not have to take eighty times
+  the download to say so. Development uses the default: about 11 MB, and it copies to a test
   machine in a second.
 
   No zip and no MANUAL.md/docs copy — see the toolkit's version if a future build needs those;

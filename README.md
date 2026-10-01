@@ -9,15 +9,21 @@ deviation and extreme spread.
 
 ## Install
 
-1. Download the zip from
+1. Download a zip from
    [Releases](https://github.com/xquizitclaw-creator/GRT-Shotmarker-Importer/releases/latest).
 2. Unzip it, and put the `ShotMarker` folder inside GRT's `plugins` folder.
 3. Restart GRT. A **ShotMarker** button appears on the toolbar.
 
-Windows, 64-bit. Released builds are self-contained, so there is no runtime to install first.
-A build you make yourself is framework-dependent unless you pass `-SelfContained`, and needs the
-[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the GRT machine —
-without it GRT lists the plugin but cannot start it.
+Windows, 64-bit. Each release carries two zips of the same plugin, installed the same way:
+
+- `GRT-ShotMarker-<version>-win-x64.zip` is self-contained — it brings its own copy of .NET and
+  needs nothing installed. Nearly all of its size is that copy.
+- `GRT-ShotMarker-<version>-win-x64-needs-dotnet8.zip` leaves the runtime out, so it is a
+  fifteenth the size and needs the
+  [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the GRT machine —
+  without it GRT lists the plugin but cannot start it.
+
+A build you make yourself is the second kind unless you pass `-SelfContained`.
 
 ## Use
 
@@ -59,8 +65,8 @@ powershell -File tools/build-plugin.ps1 -SelfContained
 ```
 
 Releases are built by `.github/workflows/release.yml`, not by hand: pushing a tag whose version
-matches `Directory.Build.props` builds the self-contained folder on a Windows runner, zips it, and
-publishes it with the zip's SHA-256 in the notes. The release page's text is
+matches `Directory.Build.props` runs both builds on a Windows runner, zips each, and publishes the
+pair with their SHA-256s in the notes. The release page's text is
 `.github/release-notes.md`, including its “what's new” section — update it in the commit that
 bumps the version.
 

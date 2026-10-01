@@ -1,10 +1,10 @@
 # Pushing a tag like v0.1.0 builds the download and publishes it.
 #
 # The build has to happen here rather than on someone's desk: a plugin folder assembled by hand
-# is a plugin folder whose provenance nobody can check, and this one is a 70-odd MB binary that
-# strangers are being asked to unzip into their reloading software. Every release asset on the
-# page came from a tagged commit in this repo, built by this file, and the notes carry the
-# zip's SHA-256 so anyone who cares can prove the download matches.
+# is a plugin folder whose provenance nobody can check, and these are binaries that strangers
+# are being asked to unzip into their reloading software. Every release asset on the page came
+# from a tagged commit in this repo, built by this file, and the notes carry each zip's
+# SHA-256 so anyone who cares can prove their download matches.
 name: release
 
 on:
@@ -42,24 +42,40 @@ jobs:
             throw "tag $tag means version $want, but Directory.Build.props says $got. Bump one of them."
           }
 
-      # Self-contained: the download works on a machine with no .NET installed at all.
-      - name: Build the plugin folder
-        shell: pwsh
-        run: ./tools/build-plugin.ps1 -SelfContained
-
-      # Zipped from the parent so it unpacks as ShotMarker\, which is the folder name GRT wants
-      # inside plugins\ — unzipping a bare pile of DLLs into plugins\ does not make a plugin.
-      - name: Zip it
+      # Two downloads, one build each, from the same tagged commit.
+      #
+      # The self-contained zip is the one to hand a stranger: it needs nothing installed. It is
+      # also about 155 MB unpacked, almost all of which is .NET rather than this plugin — and 45 MB
+      # of that is WPF, a UI toolkit nothing here touches, which comes along because .NET ships
+      # WinForms and WPF as a single runtime pack with no supported way to take only one half.
+      # Trimming is not the answer: it is unsupported for WinForms, and GRT loads plugins by
+      # reflection, which is exactly what a trimmer cannot follow. So the slim zip is simply the
+      # same plugin without the bundled runtime — a dozen files — for the many GRT machines that
+      # already have the .NET 8 Desktop Runtime.
+      #
+      # Each is zipped from the parent so it unpacks as ShotMarker\, which is the folder name GRT
+      # wants inside plugins\ — unzipping a bare pile of DLLs into plugins\ does not make a plugin.
+      - name: Build and zip both downloads
+        id: zip
         shell: pwsh
         run: |
-          $zip = "GRT-ShotMarker-${{ github.ref_name }}-win-x64.zip"
-          Compress-Archive -Path dist/ShotMarker -DestinationPath $zip
-          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          $mb = '{0:N1}' -f ((Get-Item $zip).Length / 1MB)
-          "zip=$zip"  >> $env:GITHUB_OUTPUT
-          "sha=$sha"  >> $env:GITHUB_OUTPUT
-          "mb=$mb"    >> $env:GITHUB_OUTPUT
-        id: zip
+          $tag = '${{ github.ref_name }}'
+          # build-plugin.ps1 wipes dist\ShotMarker on every run, so the second build cannot
+          # inherit a file from the first — which for these two variants would be a 68 MB
+          # runtime in a zip that advertises itself as not carrying one.
+          function Pack($name, $prefix) {
+            Compress-Archive -Path dist/ShotMarker -DestinationPath $name
+            $sha = (Get-FileHash $name -Algorithm SHA256).Hash.ToLower()
+            $mb  = '{0:N1}' -f ((Get-Item $name).Length / 1MB)
+            "${prefix}zip=$name" >> $env:GITHUB_OUTPUT
+            "${prefix}sha=$sha"  >> $env:GITHUB_OUTPUT
+            "${prefix}mb=$mb"    >> $env:GITHUB_OUTPUT
+            Write-Host "==> $name ($mb MB)"
+          }
+          ./tools/build-plugin.ps1 -SelfContained
+          Pack "GRT-ShotMarker-$tag-win-x64.zip" ''
+          ./tools/build-plugin.ps1
+          Pack "GRT-ShotMarker-$tag-win-x64-needs-dotnet8.zip" 'slim_'
 
       # The notes body lives in .github/release-notes.md, not in a string in here: a release page
       # is read by people deciding whether to trust a 68 MB download, and prose is easier to get
@@ -74,7 +90,12 @@ jobs:
         run: |
           # Both ends of the encoding are explicit: the default differs between PowerShell
           # versions, and this text has em dashes in it.
+          # SLIM_ before the shorter tokens: a plain .Replace('{{ZIP}}', ...) run first would
+          # also eat the ZIP in {{SLIM_ZIP}} and leave a stray "SLIM_" in front of a filename.
           $notes = (Get-Content .github/release-notes.md -Raw -Encoding utf8).
+                     Replace('{{SLIM_ZIP}}', '${{ steps.zip.outputs.slim_zip }}').
+                     Replace('{{SLIM_SHA}}', '${{ steps.zip.outputs.slim_sha }}').
+                     Replace('{{SLIM_MB}}',  '${{ steps.zip.outputs.slim_mb }}').
                      Replace('{{ZIP}}', '${{ steps.zip.outputs.zip }}').
                      Replace('{{SHA}}', '${{ steps.zip.outputs.sha }}').
                      Replace('{{MB}}',  '${{ steps.zip.outputs.mb }}')
@@ -92,16 +113,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag   = '${{ github.ref_name }}'
-          $zip   = '${{ steps.zip.outputs.zip }}'
+          $zips  = @('${{ steps.zip.outputs.zip }}', '${{ steps.zip.outputs.slim_zip }}')
           $title = "ShotMarker Import $tag"
           gh release view $tag > $null 2>&1
           if ($LASTEXITCODE -eq 0) {
             Write-Host "==> $tag exists; updating it"
             gh release edit   $tag --title $title --notes-file notes.md
             if ($LASTEXITCODE -ne 0) { throw "gh release edit failed with exit code $LASTEXITCODE" }
-            gh release upload $tag $zip --clobber
+            gh release upload $tag $zips --clobber
             if ($LASTEXITCODE -ne 0) { throw "gh release upload failed with exit code $LASTEXITCODE" }
           } else {
-            gh release create $tag $zip --title $title --notes-file notes.md
+            gh release create $tag $zips --title $title --notes-file notes.md
             if ($LASTEXITCODE -ne 0) { throw "gh release create failed with exit code $LASTEXITCODE" }
           }
