@@ -21,10 +21,17 @@ internal sealed class ImportForm : Form
     private readonly Button _browse = new() { Text = "Open export…", AutoSize = true };
     private readonly Button _import = new() { Text = "Import selected", AutoSize = true, Enabled = false };
     private readonly Label _load = new() { AutoSize = true, Text = "No load open" };
-    private readonly Label _pointLabel = new() { AutoSize = true, Text = "I shot from:", Visible = false,
+    private readonly Label _pointLabel = new() { AutoSize = true, Text = "I shot from:",
                                                 Padding = new Padding(12, 6, 2, 0) };
-    private readonly ComboBox _point = new() { Visible = false, Width = 90,
-                                               DropDownStyle = ComboBoxStyle.DropDownList };
+    private readonly ComboBox _point = new() { DropDownStyle = ComboBoxStyle.DropDownList };
+
+    // The label and its list travel as one control, and it is the box that hides, never either
+    // of them on its own. A FlowLayoutPanel orders its children by z-order, and on a window
+    // that is already on screen a control takes its place in that order when it is shown — so
+    // `_pointLabel.Visible = _point.Visible = true` put the list in front of its own label,
+    // which assigns right to left. Hiding the pair as a unit means their order cannot drift.
+    private readonly FlowLayoutPanel _pointBox = new() { AutoSize = true, WrapContents = false,
+                                                        Margin = Padding.Empty, Visible = false };
     private readonly SplitContainer _split = new() { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
 
     // The preview: the string as it will be imported, and every shot in it.
@@ -52,7 +59,8 @@ internal sealed class ImportForm : Form
         BuildShotGrid();
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-        top.Controls.AddRange(new Control[] { _browse, _import, _pointLabel, _point, _load });
+        _pointBox.Controls.AddRange(new Control[] { _pointLabel, _point });
+        top.Controls.AddRange(new Control[] { _browse, _import, _pointBox, _load });
 
         _preview.Panel1.Controls.Add(_face);
         _preview.Panel2.Controls.Add(_shots);
@@ -204,10 +212,18 @@ internal sealed class ImportForm : Form
             strings.Select(s => s.FiringPoint).Where(p => p is not null).Select(p => p!));
 
         bool shared = points.Count > 1;
-        _pointLabel.Visible = _point.Visible = shared;
+        _pointBox.Visible = shared;
         if (!shared) { ApplyFiringPoint(); return; }
 
         foreach (string code in points) _point.Items.Add(new PointItem(code, SmFiringPoint.Word(code)));
+
+        // Sized to the words it is actually holding, not to a number that happened to fit
+        // "Left" once: the form runs at whatever font and DPI the shooter's machine uses, and a
+        // three-up frame asks for "Middle". A clipped point is a shooter reading "Lef" and
+        // wondering which half of the mound that is.
+        _point.Width = _point.Items.Cast<PointItem>()
+                              .Max(p => TextRenderer.MeasureText(p.Text, _point.Font).Width)
+                     + SystemInformation.VerticalScrollBarWidth + 8;
 
         // The tablet's selected shooter is the export's best guess at who made it. Weak
         // evidence, so it is stated rather than quietly acted on: a shooter who reads this and
