@@ -31,12 +31,12 @@ public class SmTarReaderTests
     }
 
     [Fact]
-    public void NothingReadFromAnArchiveIsTaggedAsASecondTarget()
+    public void NothingReadFromAnArchiveCarriesAFiringPoint()
     {
-        // A .tar session file carries one target per string — the shot-id letter prefixes
-        // that separate two rifles out of one CSV block have no counterpart here. So every
+        // A .tar session file carries one target per string — the shot-id position prefixes
+        // that separate two shooters out of one CSV block have no counterpart here. So every
         // string off an archive is the shooter's own, and the import window ticks them all.
-        Assert.All(Read(out _), s => Assert.Null(s.TargetTag));
+        Assert.All(Read(out _), s => Assert.Null(s.FiringPoint));
     }
 
     [Fact]

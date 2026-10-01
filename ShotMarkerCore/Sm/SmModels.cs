@@ -55,24 +55,107 @@ public sealed record SmGroupStats(
     double? MeanRadiusMm, double? GroupSizeMm, double? CtcMm,
     double? VelocityAvgMps, double? VelocitySdMps, double? VelocityEsMps);
 
-/// <summary>One shooting string, the same shape whether it came from a .tar or a .csv.</summary>
-/// <param name="TargetTag">The shot-id letter prefix that separated this string out of a CSV
-/// block carrying two interleaved targets ("R"), or null for the block's own unprefixed
-/// target. One ShotMarker sensor frame can watch the target beside it — at a match the
-/// targets sit a foot or so apart and the far sensors hear both — so a second prefix is
-/// another lane, which usually means another shooter. Null for everything read from a .tar,
-/// which carries one target per string.
+/// <summary>The firing points of a pair- or triple-fire frame, in ShotMarker's own
+/// vocabulary. One sensor frame can carry several shooters' targets, and it tells them apart
+/// by prefixing each shot id with a position code — the letter the device puts in front of
+/// the shot number for every shooter except the one currently selected on its screen.
 ///
-/// <para>The fact, not the "[R]" in <see cref="Name"/>, which is only how this is shown.
-/// The import window reads this to decide what to tick, and a tick-box is not something to
-/// settle by searching a display string for a bracket.</para></param>
+/// <para>The codes and the words are ShotMarker's, not ours, read out of the device's own
+/// interface: a two-up frame labels its score columns "Right" and "Left" for slots 1 and 2,
+/// a three-up "Right", "Middle", "Left", and a team frame "One" through "Four", while the
+/// matching shot-id prefixes are R/L, R/M/L and A/B/C/D. Mapping them any other way would
+/// put a shooter on the wrong side of the mound.</para></summary>
+public static class SmFiringPoint
+{
+    // Index is the device's slot number minus one, so the code and the word at the same
+    // index are the same firing point. A frame's shooters are always the first N of a row.
+    private static readonly string[][] Codes =
+    {
+        new[] { "R", "L" },
+        new[] { "R", "M", "L" },
+        new[] { "A", "B", "C", "D" },
+    };
+
+    private static readonly string[][] Words =
+    {
+        new[] { "Right", "Left" },
+        new[] { "Right", "Middle", "Left" },
+        new[] { "One", "Two", "Three", "Four" },
+    };
+
+    /// <summary>The word a shooter would see on the device for a position code, or the code
+    /// itself if the device ever uses one this does not know — a letter in brackets is a
+    /// poor label but an honest one, where inventing a side would not be.</summary>
+    public static string Word(string code)
+    {
+        for (int scheme = 0; scheme < Codes.Length; scheme++)
+        {
+            int i = Array.IndexOf(Codes[scheme], code);
+            if (i >= 0) return Words[scheme][i];
+        }
+        return code;
+    }
+
+    /// <summary>The distinct codes given, ordered by the device's own slot numbering — Right
+    /// before Left on a two-up, Right/Middle/Left on a three-up — so a list of them reads the
+    /// way the tablet's score columns do rather than in firing order. A code from no known
+    /// scheme sorts last rather than being dropped.</summary>
+    public static List<string> InSlotOrder(IEnumerable<string> codes)
+    {
+        var present = codes.Distinct().ToList();
+
+        // The scheme has to be chosen from the whole set, not per code: "L" is slot 2 of a
+        // two-up but slot 3 of a three-up, so asking each code for its slot on its own puts
+        // Left ahead of Middle.
+        foreach (string[] scheme in Codes)
+            if (present.All(scheme.Contains))
+                return present.OrderBy(c => Array.IndexOf(scheme, c)).ToList();
+
+        return present.OrderBy(c => c, StringComparer.Ordinal).ToList();
+    }
+
+    /// <summary>The position of the one group whose shots the export left unprefixed, worked
+    /// out from the positions that are prefixed: on a frame of <paramref name="pointCount"/>
+    /// shooters, the bare group is whichever position is not accounted for. Null when that
+    /// cannot be settled — a lone target with no positions at all, or a frame where some
+    /// position did not fire, leaving two candidates for the empty seat. Null is the right
+    /// answer there and a guess is not: it decides which shots the shooter is told are
+    /// theirs.</summary>
+    public static string? ByElimination(IReadOnlyCollection<string> prefixed, int pointCount)
+    {
+        foreach (string[] scheme in Codes)
+        {
+            if (scheme.Length != pointCount) continue;
+            if (!prefixed.All(p => scheme.Contains(p))) continue;
+            var missing = scheme.Where(c => !prefixed.Contains(c)).ToList();
+            if (missing.Count == 1) return missing[0];
+        }
+        return null;
+    }
+}
+
+/// <summary>One shooting string, the same shape whether it came from a .tar or a .csv.</summary>
+/// <param name="FiringPoint">Which point on the mound shot this string, as a
+/// <see cref="SmFiringPoint"/> code ("R", "L", "M"), or null when the frame carried one
+/// target or the point could not be established. Everything read from a .tar is null, since
+/// an archived session file holds one target per string.
+///
+/// <para>The fact, not the "[Right]" in <see cref="Name"/>, which is only how this is shown.
+/// The import window reads this to decide what to tick, and whose shots a shooter takes home
+/// is not something to settle by searching a display string for a bracket.</para></param>
+/// <param name="WasSelectedOnDevice">True for the one group per block whose shot ids carry no
+/// position prefix at all — the shooter the tablet had selected when the export was made.
+/// That is weak evidence but it is real evidence, and on an export a shooter made themselves
+/// it is nearly always them, so the import window opens on that point rather than on a
+/// coin-toss. False for every prefixed group, and false for all of them on the rare export
+/// where no position was selected.</param>
 public sealed record SmString(
     string Id, string Name, DateTimeOffset Timestamp,
     string FaceId, double DistanceValue, string DistanceUnit,
     double FrameWidthMm, double FrameHeightMm,
     double? BulletDiameterMm, string? ScoreText,
     IReadOnlyList<SmShot> Shots, SmGroupStats? Stats,
-    string? TargetTag = null)
+    string? FiringPoint = null, bool WasSelectedOnDevice = false)
 {
     private const double MetresPerYard = 0.9144;
 

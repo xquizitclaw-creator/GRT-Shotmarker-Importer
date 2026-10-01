@@ -21,6 +21,10 @@ internal sealed class ImportForm : Form
     private readonly Button _browse = new() { Text = "Open export…", AutoSize = true };
     private readonly Button _import = new() { Text = "Import selected", AutoSize = true, Enabled = false };
     private readonly Label _load = new() { AutoSize = true, Text = "No load open" };
+    private readonly Label _pointLabel = new() { AutoSize = true, Text = "I shot from:", Visible = false,
+                                                Padding = new Padding(12, 6, 2, 0) };
+    private readonly ComboBox _point = new() { Visible = false, Width = 90,
+                                               DropDownStyle = ComboBoxStyle.DropDownList };
     private readonly SplitContainer _split = new() { Dock = DockStyle.Fill, Orientation = Orientation.Horizontal };
 
     // The preview: the string as it will be imported, and every shot in it.
@@ -48,7 +52,7 @@ internal sealed class ImportForm : Form
         BuildShotGrid();
 
         var top = new FlowLayoutPanel { Dock = DockStyle.Top, AutoSize = true };
-        top.Controls.AddRange(new Control[] { _browse, _import, _load });
+        top.Controls.AddRange(new Control[] { _browse, _import, _pointLabel, _point, _load });
 
         _preview.Panel1.Controls.Add(_face);
         _preview.Panel2.Controls.Add(_shots);
@@ -66,6 +70,7 @@ internal sealed class ImportForm : Form
         _browse.Click += (_, _) => Browse();
         _import.Click += async (_, _) => await ImportAsync();
         _grid.SelectionChanged += (_, _) => ShowPreview();
+        _point.SelectedIndexChanged += (_, _) => ApplyFiringPoint();
 
         // The window never blocks on IPC (reference D1): both the tab discovery and the
         // eventual Load_File call are awaited here, not run synchronously, so GRT taking its
@@ -160,13 +165,10 @@ internal sealed class ImportForm : Form
         var ic = CultureInfo.CurrentCulture;
         foreach (SmString s in strings)
         {
-            // Unticked when the string came off a second target sharing this frame's sensors
-            // — normally the next lane's shooter, not this one's. Unticked rather than
-            // dropped: a club setup where one shooter runs both targets is perfectly real, so
-            // the shooter gets to say. This matters more than a default usually does, because
-            // GRT has no way to delete an appendix tab once it is written: an unwanted string
-            // is not something the shooter can undo afterwards, only re-import without.
-            int i = _grid.Rows.Add(s.TargetTag is null, s.Name, s.Timestamp.ToString("yyyy-MM-dd HH:mm"),
+            // Added ticked; which of them stay ticked is ApplyFiringPoint's single decision,
+            // made once the firing-point list exists, so there is one rule rather than two
+            // that have to agree.
+            int i = _grid.Rows.Add(true, s.Name, s.Timestamp.ToString("yyyy-MM-dd HH:mm"),
                 $"{s.DistanceValue.ToString("0", ic)} {s.DistanceUnit}", s.FaceId, CountedText(s),
                 s.ScoreText ?? "",
                 MeanVelocityText(s, ic),
@@ -184,12 +186,65 @@ internal sealed class ImportForm : Form
         }
         _import.Enabled = _grid.Rows.Count > 0;
         Note($"{strings.Count} string(s) read from {Path.GetFileName(dlg.FileName)}");
-
-        int second = strings.Count(s => s.TargetTag is not null);
-        if (second > 0)
-            Note($"{second} string(s) came off a second target on the same sensor frame and are "
-               + "NOT ticked — they are usually the next lane's shooter. Tick any that are yours.");
+        OfferFiringPoints(strings);
         ShowPreview();
+    }
+
+    /// <summary>Fills the "I shot from" list with the firing points this file actually holds,
+    /// and opens it on the shooter's most likely one. Hidden entirely for a file off a single
+    /// target, which is most of them — a frame shared by one shooter has no side to pick.
+    /// </summary>
+    private void OfferFiringPoints(IReadOnlyList<SmString> strings)
+    {
+        _point.Items.Clear();
+
+        // Device slot order (Right, Middle, Left), so the list reads the way the tablet's own
+        // score columns do rather than in whatever order the shooters happened to fire.
+        var points = SmFiringPoint.InSlotOrder(
+            strings.Select(s => s.FiringPoint).Where(p => p is not null).Select(p => p!));
+
+        bool shared = points.Count > 1;
+        _pointLabel.Visible = _point.Visible = shared;
+        if (!shared) { ApplyFiringPoint(); return; }
+
+        foreach (string code in points) _point.Items.Add(new PointItem(code, SmFiringPoint.Word(code)));
+
+        // The tablet's selected shooter is the export's best guess at who made it. Weak
+        // evidence, so it is stated rather than quietly acted on: a shooter who reads this and
+        // says "no, I was on the right" has the list right there.
+        string? assumed = strings.FirstOrDefault(s => s.WasSelectedOnDevice && s.FiringPoint is not null)
+                                 ?.FiringPoint;
+        _point.SelectedIndex = assumed is null ? 0 : points.IndexOf(assumed);
+
+        Note($"This frame was shared by {points.Count} shooters ("
+           + string.Join(", ", points.Select(SmFiringPoint.Word)) + ").");
+        Note(assumed is null
+            ? $"The export does not say which point was yours — assuming {SmFiringPoint.Word(points[0])}. "
+            + "Set 'I shot from' if that is wrong."
+            : $"Your tablet had the {SmFiringPoint.Word(assumed)} point selected when this was "
+            + "exported, so that is assumed to be yours. Set 'I shot from' if you were elsewhere.");
+    }
+
+    /// <summary>Ticks the strings shot from the selected point and unticks the rest. Strings
+    /// with no firing point — a lone target, or a frame where the point could not be worked
+    /// out — stay ticked whatever is chosen: they are nobody else's.
+    ///
+    /// <para>The one place the tick is decided, and it overwrites by hand ticks on purpose:
+    /// changing which point was yours is a statement about the whole file. Individual rows
+    /// stay editable afterwards for the relay where you moved.</para></summary>
+    private void ApplyFiringPoint()
+    {
+        string? mine = (_point.SelectedItem as PointItem)?.Code;
+        foreach (DataGridViewRow row in _grid.Rows)
+            if (row.Tag is SmString s)
+                row.Cells["sel"].Value = s.FiringPoint is null || s.FiringPoint == mine;
+    }
+
+    /// <summary>A firing point in the list: the device's code to match on, the device's word to
+    /// show. ComboBox displays whatever ToString gives it.</summary>
+    private sealed record PointItem(string Code, string Text)
+    {
+        public override string ToString() => Text;
     }
 
     /// <summary>"20" normally; "18 of 20" once some are struck out, so the count in the list
