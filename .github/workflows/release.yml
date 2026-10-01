@@ -70,10 +70,14 @@ jobs:
         shell: pwsh
         run: |
           $tag = '${{ github.ref_name }}'
-          # An annotated tag's message becomes the "what's new" section; a lightweight tag has no
-          # message, and the notes do without rather than inventing one.
-          $what = (git tag -l --format='%(contents:body)' $tag) -join "`n"
-          if (-not $what.Trim()) { $what = (git tag -l --format='%(contents:subject)' $tag) -join "`n" }
+          # The tag's whole message becomes the "what's new" section. %(contents), not
+          # %(contents:body) — the body is everything *after* the subject line, so a three-line
+          # tag message loses its first line, which is the line most likely to say what changed.
+          # The heading is added here rather than written in the tag, because git strips every
+          # line starting with '#' when it cleans up a tag message. A lightweight tag has no
+          # message at all, and then the notes carry no such section rather than an empty one.
+          $what = ((git tag -l --format='%(contents)' $tag) -join "`n").Trim()
+          if ($what) { $what = "## What's new`n`n$what" }
 
           $notes = (Get-Content .github/release-notes.md -Raw -Encoding utf8).
                      Replace('{{ZIP}}',        '${{ steps.zip.outputs.zip }}').
