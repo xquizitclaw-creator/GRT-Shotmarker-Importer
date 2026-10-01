@@ -231,4 +231,97 @@ public class TargetRendererTests
         Assert.NotEqual(withText.Png, without.Png);
         Assert.True(new RenderOptions().DrawText, "text must stay on by default");
     }
+
+    /// <summary>
+    /// GRT prints its own number beside every point it holds, in bright green, and nothing
+    /// in the .grtload or the plugin API turns that off. So the picture written into the load
+    /// must not carry numbers of its own, or the shooter reads every figure twice, in two
+    /// colours, slightly apart. The preview keeps them: nothing else is drawing them there.
+    ///
+    /// <para>Asserting the difference is confined to the discs is the point — "the two
+    /// pictures differ" would also pass if the numbers were still there and something else
+    /// had changed.</para>
+    /// </summary>
+    [Fact]
+    public void TheImportPictureCarriesNoShotNumbersWhileThePreviewDoes()
+    {
+        SmString s = FirstString();
+        TargetFace face = TargetFaceLibrary.Find(s.FaceId)!;
+
+        var forGrt = TargetRenderer.Render(s, face, RenderOptions.ForGrt);
+        var forPreview = TargetRenderer.Render(s, face, RenderOptions.ForPreview);
+
+        using SKBitmap grt = SKBitmap.Decode(forGrt.Png);
+        using SKBitmap preview = SKBitmap.Decode(forPreview.Png);
+        Assert.Equal(preview.Width, grt.Width);
+        Assert.Equal(preview.Height, grt.Height);
+
+        // The renderer's own disc geometry, plus a pixel of antialiasing slack.
+        TargetProjection p = forGrt.Projection;
+        float reach = Math.Max(p.Px((s.BulletDiameterMm ?? 7.2) / 2), 8) + 1;
+        var centres = s.Shots
+            .Where(sh => !sh.IsInvalid && double.IsFinite(sh.XMm) && double.IsFinite(sh.YMm))
+            .Select(sh => p.ToPixel(sh.XMm, sh.YMm))
+            .ToList();
+
+        int differing = 0;
+        for (int y = 0; y < grt.Height; y++)
+            for (int x = 0; x < grt.Width; x++)
+            {
+                if (grt.GetPixel(x, y) == preview.GetPixel(x, y)) continue;
+                differing++;
+                Assert.True(
+                    centres.Any(c => Math.Abs(c.X - x) <= reach && Math.Abs(c.Y - y) <= reach),
+                    $"pixel {x},{y} differs but is not on a shot disc — the two option sets "
+                    + "differ in something other than the disc numbers");
+            }
+
+        Assert.True(differing > 0, "the import picture is identical to the preview — the "
+                                 + "numbers are still being drawn into the load");
+    }
+
+    /// <summary>The presets are the only two callers should need, so the defaults have to be
+    /// the preview's: a bare <c>new RenderOptions()</c> is what every existing test and the
+    /// CLI already use, and it must keep drawing the numbers it always drew.</summary>
+    [Fact]
+    public void NumbersAreDrawnUnlessTheGrtPresetIsAsked()
+    {
+        Assert.True(new RenderOptions().DrawShotNumbers);
+        Assert.True(RenderOptions.ForPreview.DrawShotNumbers);
+        Assert.False(RenderOptions.ForGrt.DrawShotNumbers);
+
+        // Only that one flag differs — the preview must be the same picture, same face, same
+        // furniture, or the shooter is approving a target they will not get.
+        Assert.Equal(RenderOptions.ForPreview with { DrawShotNumbers = false }, RenderOptions.ForGrt);
+    }
+
+    /// <summary>
+    /// A coordinate that is not a number, on a shot the device did NOT flag. Filtering on
+    /// IsInvalid alone let that through, and one of them sized the canvas to nothing:
+    /// Math.Max(x, NaN) is NaN, NaN mm became 0 px, SKSurface.Create returned null and the
+    /// render died on a NullReferenceException — taking the whole import with it, not just
+    /// the one string. SmShot.IsPlottable is the predicate that actually holds.
+    /// </summary>
+    [Fact]
+    public void ANonFiniteCoordinateTheDeviceDidNotFlagDoesNotPoisonThePicture()
+    {
+        SmString s = FirstString();
+        SmString holed = s with
+        {
+            Shots = s.Shots.Select((sh, i) => i == 2 ? sh with { XMm = double.NaN } : sh).ToList(),
+        };
+        TargetFace face = TargetFaceLibrary.Find(s.FaceId)!;
+
+        var clean = TargetRenderer.Render(s, face, RenderOptions.ForGrt);
+        var r = TargetRenderer.Render(holed, face, RenderOptions.ForGrt);
+
+        // Same canvas: the bad shot is gone, not merely survived. A NaN that reached the
+        // extent would have changed every dimension here.
+        Assert.Equal(clean.Width, r.Width);
+        Assert.Equal(clean.Height, r.Height);
+        Assert.Equal(clean.Projection.WidthMm, r.Projection.WidthMm, 9);
+
+        // And off the banner, whose figures are a min/max over the same coordinates.
+        Assert.DoesNotContain("NaN", TargetRenderer.StatsBanner(holed));
+    }
 }

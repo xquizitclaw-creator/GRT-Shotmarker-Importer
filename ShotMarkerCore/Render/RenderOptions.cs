@@ -16,7 +16,24 @@ namespace ShotMarker.Core.Render;
 /// coverage, and that is what makes a portable golden image possible. Nothing but the golden
 /// test should ever set this false: a picture with no numbers on it is useless to a shooter.
 /// </param>
+/// <param name="DrawShotNumbers">The number printed inside each shot disc. GRT draws its own
+/// label beside every point it holds, in <c>color_shotgroup_group</c> (bright green by
+/// default), and that is not something a .grtload or a plugin can switch off. So on the
+/// picture handed to GRT these would be a second set of numerals over the first — the same
+/// figure twice, in two colours, slightly offset. Off for the import, on for the preview,
+/// where nothing else is drawing them and the shooter needs them to pick a shot out.</param>
 public sealed record RenderOptions(
-    double PixelsPerMm = 0.6, double MarginMm = 25, bool DrawFurniture = true, bool DrawText = true);
+    double PixelsPerMm = 0.6, double MarginMm = 25, bool DrawFurniture = true,
+    bool DrawText = true, bool DrawShotNumbers = true)
+{
+    /// <summary>The picture written into the load. GRT numbers the points itself, so this one
+    /// does not.</summary>
+    public static RenderOptions ForGrt { get; } = new() { DrawShotNumbers = false };
+
+    /// <summary>The picture shown in the import window. Identical to <see cref="ForGrt"/> but
+    /// for the disc numbers, which only this one draws, because here there is no GRT
+    /// underneath to draw them.</summary>
+    public static RenderOptions ForPreview { get; } = new();
+}
 
 public sealed record RenderedTarget(byte[] Png, int Width, int Height, TargetProjection Projection);

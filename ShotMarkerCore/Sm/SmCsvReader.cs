@@ -53,11 +53,13 @@ public static class SmCsvReader
     /// header's first-then-second score column). See task-5-report.md for the worked
     /// numbers on all three multi-target strings.
     ///
-    /// Naming: the unprefixed group ("1,2,3.."/"S1..") always keeps the block's own name
-    /// ("M6 R1 TT11"); a lettered-prefix group gets that name plus "[prefix]"
-    /// ("M6 R1 TT11 [R]") so both are identifiable and distinct. (If a block ever has no
-    /// unprefixed group at all, the first-appearing group keeps the plain name instead —
-    /// not exercised by the fixture, whose two groups are always "" and "R".)
+    /// Naming: a prefix is a firing point, not a bare discriminator — the device's own
+    /// position code (see <see cref="SmFiringPoint"/>) — so a split block's strings are named
+    /// for the point that shot them: "M6 R1 TT11 [Right]" and "M6 R1 TT11 [Left]". The
+    /// lettered group reads its point straight off its prefix; the unprefixed group's point is
+    /// whichever one the block does not otherwise account for, and where that cannot be
+    /// settled it keeps the block's plain name rather than carry a guessed side. A block with
+    /// one target is one string with its own name and no point at all.
     ///
     /// <see cref="SmShot.Number"/> restarts at 1 within each emitted string (sighters
     /// included), the same convention <c>SmTarReader</c> uses — trivially collision-free
@@ -274,11 +276,17 @@ public static class SmCsvReader
         if (appearanceOrder.Count > 1 && scores.Count < appearanceOrder.Count)
             log.Add($"string '{name}': {appearanceOrder.Count} targets but only {scores.Count} declared score column(s)");
 
-        // Emission order: the base group (plain name) first, then any additional lettered
-        // groups in their first-appearance order. Cosmetic only — does not affect Number or
-        // which score column a group gets (that is appearanceOrder, independent of this).
+        // Emission order: the base group first, then any additional lettered groups in their
+        // first-appearance order. Cosmetic only — does not affect Number or which score column
+        // a group gets (that is appearanceOrder, independent of this).
         var emissionOrder = new List<string> { baseGroup };
         emissionOrder.AddRange(appearanceOrder.Where(p => p != baseGroup));
+
+        // The unprefixed group is the shooter the tablet had selected, so its own position is
+        // the one the prefixes leave unclaimed. Resolved once for the block, from every
+        // prefix in it, because elimination needs the whole set — not per group.
+        var prefixed = appearanceOrder.Where(p => p.Length > 0).ToList();
+        string? barePoint = SmFiringPoint.ByElimination(prefixed, appearanceOrder.Count);
 
         var result = new List<SmString>();
         foreach (string prefix in emissionOrder)
@@ -290,13 +298,19 @@ public static class SmCsvReader
                 // guessed true/false (task 9b).
                 shots.Add(new SmShot(shots.Count + 1, r.XMm, r.YMm, r.VelocityMps, r.Score, r.TempC, r.IsSighter, false, null));
 
-            string stringName = prefix == baseGroup ? name : $"{name} [{prefix}]";
+            // The suffix and the point are the same fact twice: one for the shooter to read,
+            // one for the import window to act on. A lettered group states its own point; the
+            // bare one only has the one elimination gave, which may be nothing.
+            bool unprefixed = prefix.Length == 0;
+            string? point = unprefixed ? barePoint : prefix;
+            string stringName = point is null ? name : $"{name} [{SmFiringPoint.Word(point)}]";
             int scoreIdx = appearanceOrder.IndexOf(prefix);
             string? scoreText = scoreIdx >= 0 && scoreIdx < scores.Count ? scores[scoreIdx] : null;
 
             // Id is a placeholder here — Read()'s Flush() overwrites it with a counter that
             // runs over every emitted string in the whole file, not just this block's.
-            result.Add(new SmString("", stringName, ts, faceId, dist, unit, w, h, null, scoreText, shots, null));
+            result.Add(new SmString("", stringName, ts, faceId, dist, unit, w, h, null, scoreText,
+                                    shots, null, point, unprefixed));
         }
         return result;
     }

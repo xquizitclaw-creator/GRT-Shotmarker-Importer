@@ -1,0 +1,53 @@
+# Two jobs, because the code has two halves that fail in different ways.
+#
+# The core half is pure .NET and portable, so its tests run on the cheapest runner there is.
+# The plugin half is WinForms, and a Mac cannot compile it at all — Homebrew's dotnet ships no
+# Microsoft.NET.Sdk.WindowsDesktop, so every change to the import window had to be shipped to a
+# Windows box before anyone knew whether it even built. That is what the windows job is for: a
+# compiler reading the UI code on every push, not a trip across the LAN.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+# A later push supersedes the run it interrupted; no point finishing the old one.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: core tests
+    runs-on: ubuntu-latest
+    steps:
+      # ShotMarkerCore references GrtPluginKit out of the external/ submodule, so a checkout
+      # without it cannot even restore.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Test
+        run: dotnet test ShotMarkerCore.Tests/ShotMarkerCore.Tests.csproj -c Release --nologo
+
+  plugin:
+    name: plugin build (windows)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # Builds ShotMarkerCore too, by project reference — the point is the WinForms code above it.
+      - name: Build plugin
+        run: dotnet build ShotMarkerPlugin/ShotMarkerPlugin.csproj -c Release --nologo

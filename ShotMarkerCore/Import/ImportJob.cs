@@ -26,22 +26,33 @@ public static class ImportJob
             ? GrtLoadDoc.Load(loadPath)
             : GrtLoadDoc.CreateMinimal(Path.GetFileNameWithoutExtension(loadPath), loadPath);
 
+        // Rendered first, written second, because the writing is one operation over the whole
+        // selection: the strings share a velocity measurement and a note, and that is what
+        // keeps a five-string session's tabs inside a tab bar GRT will not scroll.
+        var items = new List<ImportItem>();
         foreach (var (s, charge) in selected)
         {
             try
             {
-                TargetFace face = TargetFaceLibrary.Find(s.FaceId) ?? Fallback(s, log);
-                RenderedTarget render = TargetRenderer.Render(s, face);
-                GrtShotGroupWriter.Add(doc, new ImportItem(s, render, charge), log);
+                TargetFace face = ResolveFace(s, log);
+                items.Add(new ImportItem(s, TargetRenderer.Render(s, face, RenderOptions.ForGrt), charge));
             }
             catch (Exception ex)
             {
-                log.Add($"'{s.Name}': not imported ({ex.Message})");
+                log.Add($"'{s.Name}': not rendered ({ex.Message})");
             }
         }
 
+        GrtShotGroupWriter.AddAll(doc, items, log);
         return GrtShotGroupWriter.Save(doc);
     }
+
+    /// <summary>The face this string will be drawn on, library entry or generated fallback.
+    /// Public because the import window previews the string before writing it, and a preview
+    /// drawn on a different face from the import is worse than no preview at all — it is a
+    /// picture of a target the shooter is not going to get.</summary>
+    public static TargetFace ResolveFace(SmString s, IList<string> log) =>
+        TargetFaceLibrary.Find(s.FaceId) ?? Fallback(s, log);
 
     private static TargetFace Fallback(SmString s, IList<string> log)
     {

@@ -16,7 +16,10 @@ public class SmCsvReaderTests
     public void ReadsTheHeaderMetadataOfEachString()
     {
         var s = Read(out _).First();
-        Assert.Equal("M6 R1 TT11", s.Name);
+        // StartsWith, not Equal: this block is pair fire, so the name read out of the header
+        // gains a firing-point suffix afterwards. What belongs here is that the header's own
+        // name was read; which point shot it is EachTargetOfASplitBlockIsNamedForItsFiringPoint.
+        Assert.StartsWith("M6 R1 TT11", s.Name);
         Assert.Equal(1000, s.DistanceValue, 0);
         Assert.Equal("y", s.DistanceUnit);
         Assert.True(s.FrameWidthMm > 0);
@@ -74,15 +77,15 @@ public class SmCsvReaderTests
 
         // Six blocks in the file, but three of them (M6/M5/M4 R1 TT11) interleave two
         // rifles' shots — one SmString per target, so 3 single-target + 3*2 = 9 strings.
-        // The unprefixed target keeps the block's own name and is emitted first; the
-        // "R"-prefixed target is emitted second, named with a "[R]" suffix. Shot counts
-        // and names verified against the fixture directly (python, grouping by id prefix).
+        // The unprefixed target is emitted first, the "R"-prefixed one second, and both are
+        // named for their firing point (see EachTargetOfASplitBlockIsNamedForItsFiringPoint).
+        // Shot counts verified against the fixture directly (python, grouping by id prefix).
         Assert.Equal(9, strings.Count);
         Assert.Equal(new[]
         {
-            "M6 R1 TT11", "M6 R1 TT11 [R]",
-            "M5 R1 TT11", "M5 R1 TT11 [R]",
-            "M4 R1 TT11", "M4 R1 TT11 [R]",
+            "M6 R1 TT11 [Left]", "M6 R1 TT11 [Right]",
+            "M5 R1 TT11 [Left]", "M5 R1 TT11 [Right]",
+            "M4 R1 TT11 [Left]", "M4 R1 TT11 [Right]",
             "M3 R2 TT11", "M2 R2 TT11", "M1 R2 TT11",
         }, strings.Select(s => s.Name));
 
@@ -103,6 +106,54 @@ public class SmCsvReaderTests
     }
 
     [Fact]
+    public void EachTargetOfASplitBlockIsNamedForItsFiringPoint()
+    {
+        // The three pair-fire blocks each hold one prefixed group ("R") and one unprefixed
+        // one. "R" is the device's code for the Right point, so by elimination the bare group
+        // is the Left — which is also what the blocks' two score columns say independently,
+        // being written in the device's slot order (Right first): see
+        // MultiTargetScoreColumnsAreAssignedToTheCorrectTarget. The three single-target
+        // strings have no point and keep their plain names.
+        var strings = Read(out _);
+
+        Assert.Equal(new[]
+        {
+            "M6 R1 TT11 [Left]", "M6 R1 TT11 [Right]",
+            "M5 R1 TT11 [Left]", "M5 R1 TT11 [Right]",
+            "M4 R1 TT11 [Left]", "M4 R1 TT11 [Right]",
+            "M3 R2 TT11", "M2 R2 TT11", "M1 R2 TT11",
+        }, strings.Select(s => s.Name));
+    }
+
+    [Fact]
+    public void TheFiringPointIsCarriedAsACodeNotOnlyInTheName()
+    {
+        // The bracket in the name is for the shooter to read; FiringPoint is the same fact in
+        // a form the import window can act on, and that is what decides the tick. Asserted
+        // apart from the name because whose shots a shooter takes home must not depend on
+        // searching a display string for a bracket.
+        var strings = Read(out _);
+
+        Assert.Equal(new string?[]
+        {
+            "L", "R",
+            "L", "R",
+            "L", "R",
+            null, null, null,
+        }, strings.Select(s => s.FiringPoint));
+
+        // The unprefixed group of every block is the point the tablet had selected, which is
+        // the only reason the import window can open on a point rather than guess.
+        Assert.Equal(new[]
+        {
+            true, false,
+            true, false,
+            true, false,
+            true, true, true,
+        }, strings.Select(s => s.WasSelectedOnDevice));
+    }
+
+    [Fact]
     public void MultiTargetScoreColumnsAreAssignedToTheCorrectTarget()
     {
         // Guard against the R/unprefixed score columns being swapped: for each of the
@@ -114,12 +165,12 @@ public class SmCsvReaderTests
         // columns are swapped. Expected values below are the coordinator-verified table.
         var expected = new Dictionary<string, string>
         {
-            ["M6 R1 TT11"] = "142-4X",
-            ["M6 R1 TT11 [R]"] = "134-3X",
-            ["M5 R1 TT11"] = "137-2X",
-            ["M5 R1 TT11 [R]"] = "129-2X",
-            ["M4 R1 TT11"] = "137-1X",
-            ["M4 R1 TT11 [R]"] = "133-1X",
+            ["M6 R1 TT11 [Left]"] = "142-4X",
+            ["M6 R1 TT11 [Right]"] = "134-3X",
+            ["M5 R1 TT11 [Left]"] = "137-2X",
+            ["M5 R1 TT11 [Right]"] = "129-2X",
+            ["M4 R1 TT11 [Left]"] = "137-1X",
+            ["M4 R1 TT11 [Right]"] = "133-1X",
         };
 
         var strings = Read(out _).Where(s => expected.ContainsKey(s.Name)).ToList();

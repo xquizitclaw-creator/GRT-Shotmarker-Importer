@@ -38,12 +38,10 @@ public static class TargetRenderer
     {
         RenderOptions o = options ?? new RenderOptions();
 
-        // Errored/fake shots carry double.NaN coordinates (see SmShot.IsInvalid). Filter
-        // them out before XMm/YMm is touched anywhere — a bounding box or a plotted point
-        // is not a place a NaN can pass through quietly; Math.Max(x, NaN) is NaN, and one
-        // such shot would silently poison the extent (and therefore the scale) for the
-        // entire picture, sighters and valid record shots included.
-        var plottable = s.Shots.Where(sh => !sh.IsInvalid).ToList();
+        // Filtered before XMm/YMm is touched anywhere — see SmShot.IsPlottable. A bounding
+        // box is not a place a NaN passes through quietly: one such shot poisons the extent,
+        // and therefore the scale, for the entire picture.
+        var plottable = s.Shots.Where(sh => sh.IsPlottable).ToList();
 
         // Ruling S1: the base extent is the board's own true mm size — no padding added
         // unconditionally. It only grows if a shot needs more room than the board gives it.
@@ -67,7 +65,7 @@ public static class TargetRenderer
         DrawRings(canvas, proj, face);
         DrawPolys(canvas, proj, face);
         if (o.DrawText) DrawTexts(canvas, proj, face);
-        DrawShots(canvas, proj, plottable, s.BulletDiameterMm, o.DrawText);
+        DrawShots(canvas, proj, plottable, s.BulletDiameterMm, o.DrawText && o.DrawShotNumbers);
         if (o.DrawFurniture) DrawFurniture(canvas, proj, s, o.DrawText);
 
         using SKImage image = surface.Snapshot();
@@ -179,7 +177,7 @@ public static class TargetRenderer
 
     /// <param name="shots">Already filtered to exclude <see cref="SmShot.IsInvalid"/> shots
     /// — their coordinates are double.NaN and cannot be plotted at all.</param>
-    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm, bool drawText)
+    private static void DrawShots(SKCanvas c, TargetProjection p, IReadOnlyList<SmShot> shots, double? bulletDiameterMm, bool drawNumbers)
     {
         float radius = p.Px((bulletDiameterMm ?? 7.2) / 2);
         float discRadius = Math.Max(radius, 8);
@@ -192,9 +190,18 @@ public static class TargetRenderer
             // shot ShotMarker's own group left out (SmShot.InSelectedGroup == false), and
             // excluding a shot from the statistics is not a reason to draw it differently;
             // it still gets its numbered orange disc like every other record shot.
+            //
+            // A shot the SHOOTER struck out is the one exception, and for a reason that does
+            // not apply to any of the others: they did it themselves, in the import window,
+            // and the picture is the confirmation that it took. An exclusion the shooter
+            // cannot see is one they cannot check. Grey, so it reads as struck out against
+            // both the red and the orange — the colour, not the number, because on the
+            // picture GRT gets the numbers are GRT's (RenderOptions.DrawShotNumbers).
             using var fill = new SKPaint
             {
-                Color = sh.IsSighter ? new SKColor(0xD0, 0x30, 0x30) : new SKColor(0xF0, 0x70, 0x20),
+                Color = sh.IsExcludedByUser ? new SKColor(0x9A, 0x9A, 0x9A)
+                      : sh.IsSighter ? new SKColor(0xD0, 0x30, 0x30)
+                      : new SKColor(0xF0, 0x70, 0x20),
                 Style = SKPaintStyle.Fill, IsAntialias = true,
             };
             using var edge = new SKPaint
@@ -205,7 +212,7 @@ public static class TargetRenderer
             c.DrawCircle(x, y, discRadius, fill);
             c.DrawCircle(x, y, discRadius, edge);
 
-            if (!drawText) continue;
+            if (!drawNumbers) continue;
             using var label = new SKPaint
             {
                 Color = SKColors.White, IsAntialias = true,
@@ -233,16 +240,16 @@ public static class TargetRenderer
         c.DrawRect(new SKRect(left, top, right, bottom), box);
 
         if (!drawText) return;
-        string stats = Stats(s, x1 - x0, y1 - y0);
+        string[] stats = Stats(s, x1 - x0, y1 - y0).Split('\n');
         using var text = new SKPaint
         {
             Color = new SKColor(0x20, 0x20, 0x20), IsAntialias = true, TextSize = 22,
             Typeface = RegularTypeface,
         };
         using var plate = new SKPaint { Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE0), Style = SKPaintStyle.Fill };
-        float w = text.MeasureText(stats);
-        c.DrawRect(new SKRect(10, 10, 20 + w, 46), plate);
-        c.DrawText(stats, 15, 36, text);
+        float w = stats.Max(text.MeasureText);
+        c.DrawRect(new SKRect(10, 10, 20 + w, 46 + 26 * (stats.Length - 1)), plate);
+        for (int i = 0; i < stats.Length; i++) c.DrawText(stats[i], 15, 36 + 26 * i, text);
     }
 
     /// <summary>The bounding box of the shots the group box is drawn around, or null when the
@@ -251,7 +258,10 @@ public static class TargetRenderer
     /// include over time (task 9b added InSelectedGroup == false).</summary>
     private static (double X0, double X1, double Y0, double Y1)? ScoringExtentMm(SmString s)
     {
-        var scoring = s.Shots.Where(sh => !sh.IsFlyer).ToList();
+        // IsPlottable as well as !IsFlyer: this box is a min/max over coordinates, so an
+        // unflagged NaN here would not merely misplace it — it would put NaN through every
+        // figure on the statistics banner.
+        var scoring = s.Shots.Where(sh => !sh.IsFlyer && sh.IsPlottable).ToList();
         if (scoring.Count == 0) return null;
         return (scoring.Min(sh => sh.XMm), scoring.Max(sh => sh.XMm),
                 scoring.Min(sh => sh.YMm), scoring.Max(sh => sh.YMm));
@@ -275,6 +285,19 @@ public static class TargetRenderer
         if (s.Stats?.VelocityAvgMps is { } v) parts.Add($"v {v.ToString("0", ic)} m/s");
         if (s.Stats?.VelocitySdMps is { } sd) parts.Add($"sd {sd.ToString("0.0", ic)}");
         if (s.Stats?.VelocityEsMps is { } es) parts.Add($"es {es.ToString("0.0", ic)}");
-        return string.Join("  ", parts);
+        string banner = string.Join("  ", parts);
+
+        // w and h are measured off the shots actually drawn, so they already follow a
+        // strike-out. Everything else on the line came off the ShotMarker and describes the
+        // string it saw. Side by side with nothing said, that is two different shot sets on
+        // one line — the same defect the note's qualifier exists to prevent, except here it
+        // is painted into the picture that goes to GRT. A second line rather than a longer
+        // first one: the plate is sized by the text, and this one has to stay inside a
+        // picture whose width the face decides.
+        int struck = s.Shots.Count(sh => sh.IsExcludedByUser);
+        if (struck > 0 && s.Stats is not null)
+            banner += $"\n{struck} shot{(struck > 1 ? "s" : "")} excluded on import; "
+                    + "SM figures above are the full string";
+        return banner;
     }
 }

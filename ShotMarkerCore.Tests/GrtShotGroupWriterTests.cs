@@ -306,6 +306,112 @@ public class GrtShotGroupWriterTests
         Assert.Equal(tab.ImageWidth, p.PixelWidth);
     }
 
+    /// <summary>
+    /// Every string needs its own picture — a GRT shot group holds one — but GRT's tab bar
+    /// does not scroll, so a tab past the right-hand edge of the window cannot be reached by
+    /// any means. Three tabs per string put the back half of a session's work out of sight;
+    /// one per string plus a shared measurement and a shared note keeps it on screen.
+    /// </summary>
+    [Fact]
+    public void AMultiStringImportAddsOneTabPerStringPlusOneMeasurementAndOneNote()
+    {
+        var log = new List<string>();
+        List<SmString> strings = SmExportReader.Read(
+            Fixtures.Path("shotmarker/SM_export_Sep_21.tar"), log).ToList();
+        Assert.True(strings.Count > 1, "fixture has only one string — this proves nothing");
+
+        var doc = NewDoc();
+        GrtShotGroupWriter.AddAll(doc, strings.Select(s => Item(s)), log);
+
+        Assert.Equal(strings.Count, doc.ShotGroups().Count());
+        GrtMeasurement m = Assert.Single(doc.Measurements());
+        Assert.Equal(strings.Count, m.Charges.Count);
+        Assert.Equal(1, NoteCount(doc));
+    }
+
+    /// <summary>One string keeps the three tabs and the titles it has always had, so the
+    /// collecting above costs the common case nothing.</summary>
+    [Fact]
+    public void ASingleStringImportKeepsItsOwnName()
+    {
+        SmString s = FirstString();
+        var doc = NewDoc();
+        GrtShotGroupWriter.AddAll(doc, new[] { Item(s) }, new List<string>());
+
+        // The measurement's title comes back with a "-1" suffix: the kit's UniqueTitle sees
+        // the shot-group tab has already taken the bare name. Long-standing, and what the
+        // shooter has always seen — the point here is that it is still the STRING's name and
+        // not the generic one a multi-string import falls back to.
+        string title = $"ShotMarker — {s.Name}";
+        Assert.Equal(title, doc.ShotGroups().Single().Title);
+        Assert.StartsWith(title, doc.Measurements().Single().Title);
+    }
+
+    /// <summary>A string the writer chokes on must not cost the shooter the others — the same
+    /// best-effort promise ImportJob makes for reading and rendering.</summary>
+    [Fact]
+    public void AStringWithNoPlottableShotsDoesNotStopTheRest()
+    {
+        var log = new List<string>();
+        SmString good = FirstString();
+        SmString bad = good with
+        {
+            Name = "no coordinates",
+            Shots = good.Shots.Select(sh => sh with { XMm = double.NaN, YMm = double.NaN }).ToList(),
+        };
+
+        var doc = NewDoc();
+        GrtShotGroupWriter.AddAll(doc, new[] { Item(bad), Item(good) }, log);
+
+        Assert.Single(doc.ShotGroups());
+        Assert.Equal($"ShotMarker — {good.Name}", doc.ShotGroups().Single().Title);
+        Assert.Contains(log, l => l.Contains("no shot has coordinates"));
+    }
+
+    /// <summary>The note has to say which shots were left off the picture. GRT prints its own
+    /// number beside every hit it holds, counting from one, and that is the only numbering on
+    /// the imported picture — so a dropped shot silently renumbers everything after it.</summary>
+    [Fact]
+    public void TheNoteNamesTheShotsThatCouldNotBePlotted()
+    {
+        SmString s = FirstString();
+        int lost = s.Shots[2].Number;
+        SmString holed = s with
+        {
+            Shots = s.Shots
+                .Select(sh => sh.Number == lost ? sh with { XMm = double.NaN } : sh)
+                .ToList(),
+        };
+
+        var doc = NewDoc();
+        GrtShotGroupWriter.AddAll(doc, new[] { Item(holed) }, new List<string>());
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".grtload");
+        try
+        {
+            doc.Save(path);
+            var xml = new System.Xml.XmlDocument();
+            xml.Load(path);
+            string text = Uri.UnescapeDataString(
+                ((System.Xml.XmlElement)xml.SelectSingleNode("//note")!).GetAttribute("text"));
+            Assert.Contains($"Not plotted: shot {lost}", text);
+            Assert.Contains("no longer match the shot numbers above", text);
+        }
+        finally { File.Delete(path); }
+    }
+
+    private static int NoteCount(GrtLoadDoc doc)
+    {
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".grtload");
+        try
+        {
+            doc.Save(path);
+            var xml = new System.Xml.XmlDocument();
+            xml.Load(path);
+            return xml.SelectNodes("//note")!.Count;
+        }
+        finally { File.Delete(path); }
+    }
+
     /// <summary>An explicit metric GRT install, so a test that asserts against a hardcoded
     /// <see cref="RefUnit.Mm"/> or <see cref="ShootUnit.Meters"/> is not merely hoping that the
     /// machine running the suite has no real GRT install of its own (ruling F25).</summary>
