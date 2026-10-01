@@ -1,0 +1,95 @@
+# Pushing a tag like v0.1.0 builds the download and publishes it.
+#
+# The build has to happen here rather than on someone's desk: a plugin folder assembled by hand
+# is a plugin folder whose provenance nobody can check, and this one is a 70-odd MB binary that
+# strangers are being asked to unzip into their reloading software. Every release asset on the
+# page came from a tagged commit in this repo, built by this file, and the notes carry the
+# zip's SHA-256 so anyone who cares can prove the download matches.
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      # Full history, so the annotated tag's own message is available for the release notes.
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+          fetch-depth: 0
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # The tag and the version in Directory.Build.props are two claims about the same thing,
+      # and the manifest GRT reads is stamped from the second. If they disagree, the plugin
+      # would report one version while the download page announced another — so stop here
+      # instead, with the two values named.
+      - name: Check the tag against the shipped version
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          $want = $tag.TrimStart('v')
+          $got = ([xml](Get-Content Directory.Build.props -Raw)).SelectSingleNode('/Project/PropertyGroup/Version').InnerText.Trim()
+          if ($got -ne $want) {
+            throw "tag $tag means version $want, but Directory.Build.props says $got. Bump one of them."
+          }
+
+      # Self-contained: the download works on a machine with no .NET installed at all.
+      - name: Build the plugin folder
+        shell: pwsh
+        run: ./tools/build-plugin.ps1 -SelfContained
+
+      # Zipped from the parent so it unpacks as ShotMarker\, which is the folder name GRT wants
+      # inside plugins\ — unzipping a bare pile of DLLs into plugins\ does not make a plugin.
+      - name: Zip it
+        shell: pwsh
+        run: |
+          $zip = "GRT-ShotMarker-${{ github.ref_name }}-win-x64.zip"
+          Compress-Archive -Path dist/ShotMarker -DestinationPath $zip
+          $sha = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          $mb = '{0:N1}' -f ((Get-Item $zip).Length / 1MB)
+          "zip=$zip"  >> $env:GITHUB_OUTPUT
+          "sha=$sha"  >> $env:GITHUB_OUTPUT
+          "mb=$mb"    >> $env:GITHUB_OUTPUT
+        id: zip
+
+      # The notes body lives in .github/release-notes.md, not in a string in here: a release
+      # page is read by people deciding whether to trust a 65 MB download, and prose is easier
+      # to get right in a markdown file than inside YAML inside PowerShell. Both ends of the
+      # encoding are stated explicitly, because the default differs between PowerShell versions
+      # and the text has em dashes in it.
+      - name: Write the release notes
+        shell: pwsh
+        run: |
+          $tag = '${{ github.ref_name }}'
+          # An annotated tag's message becomes the "what's new" section; a lightweight tag has no
+          # message, and the notes do without rather than inventing one.
+          $what = (git tag -l --format='%(contents:body)' $tag) -join "`n"
+          if (-not $what.Trim()) { $what = (git tag -l --format='%(contents:subject)' $tag) -join "`n" }
+
+          $notes = (Get-Content .github/release-notes.md -Raw -Encoding utf8).
+                     Replace('{{ZIP}}',        '${{ steps.zip.outputs.zip }}').
+                     Replace('{{SHA}}',        '${{ steps.zip.outputs.sha }}').
+                     Replace('{{MB}}',         '${{ steps.zip.outputs.mb }}').
+                     Replace('{{WHATS_NEW}}',  $what.Trim())
+          if ($notes -match '\{\{\w+\}\}') { throw "unfilled placeholder in the release notes: $($Matches[0])" }
+          [System.IO.File]::WriteAllText("$PWD/notes.md", $notes, (New-Object System.Text.UTF8Encoding $false))
+          Get-Content notes.md
+
+      - name: Publish
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create '${{ github.ref_name }}'
+          '${{ steps.zip.outputs.zip }}'
+          --title 'ShotMarker Import ${{ github.ref_name }}'
+          --notes-file notes.md

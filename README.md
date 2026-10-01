@@ -9,12 +9,15 @@ deviation and extreme spread.
 
 ## Install
 
-1. Install the **.NET 8 Desktop Runtime** if you don't already have it —
-   [download](https://dotnet.microsoft.com/download/dotnet/8.0). The plugin is framework-dependent:
-   it does not bundle its own copy of .NET, so GRT will list it but be unable to start it without
-   the runtime present.
-2. Build `dist\ShotMarker` (see **Build** below) and copy that folder into GRT's `plugins` folder.
+1. Download the zip from
+   [Releases](https://github.com/xquizitclaw-creator/GRT-Shotmarker-Importer/releases/latest).
+2. Unzip it, and put the `ShotMarker` folder inside GRT's `plugins` folder.
 3. Restart GRT. A **ShotMarker** button appears on the toolbar.
+
+Windows, 64-bit. Released builds are self-contained, so there is no runtime to install first.
+A build you make yourself is framework-dependent unless you pass `-SelfContained`, and needs the
+[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the GRT machine —
+without it GRT lists the plugin but cannot start it.
 
 ## Use
 
@@ -48,11 +51,17 @@ the `net8.0-windows` WinForms shell — that needs the Windows Desktop targeting
 green on macOS, Linux and Windows alike.
 
 `tools/build-plugin.ps1` takes an optional `-GrtDir` to install straight into a GRT install's
-`plugins` folder:
+`plugins` folder, and `-SelfContained` to build the variant the releases ship:
 
 ```powershell
 powershell -File tools/build-plugin.ps1 -GrtDir "C:\Users\you\GordonsReloadingTool"
+powershell -File tools/build-plugin.ps1 -SelfContained
 ```
+
+Releases are built by `.github/workflows/release.yml`, not by hand: pushing an annotated tag
+whose version matches `Directory.Build.props` builds the self-contained folder on a Windows
+runner, zips it, and publishes it with the zip's SHA-256 in the notes. The tag's message becomes
+the release's “what's new” section.
 
 `tools/extract-targetfaces.js` regenerates `ShotMarkerCore/Faces/targetfaces.json` — the 208
 target faces — from ShotMarker's own web bundle. That bundle is ShotMarker's copyrighted code

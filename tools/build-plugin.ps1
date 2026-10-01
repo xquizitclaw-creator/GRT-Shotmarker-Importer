@@ -4,19 +4,27 @@
 
   Publishes the plugin and assembles the drop-in GRT plugin folder:
 
-    ./dist/ShotMarker/   framework-dependent - needs the .NET 8 Desktop Runtime on the GRT machine
+    ./dist/ShotMarker/   framework-dependent by default — needs the .NET 8 Desktop Runtime on
+                         the GRT machine. With -SelfContained it carries its own copy of .NET
+                         and needs nothing installed, at about eighty times the size.
 
-  This plugin has no self-contained variant, no zip and no MANUAL.md/docs copy — see the
-  toolkit's version if a future build needs those; this script only builds what
-  ShotMarkerPlugin actually ships.
+  Releases are self-contained. A shooter following a Discord link to a plugin has no reason to
+  expect a runtime install first, and GRT listing a plugin it cannot start looks broken rather
+  than unconfigured. Development uses the default: a few hundred KB, and it copies to a test
+  machine in a second.
+
+  No zip and no MANUAL.md/docs copy — see the toolkit's version if a future build needs those;
+  the release workflow zips dist\ShotMarker itself.
 
   Usage:
     ./tools/build-plugin.ps1
+    ./tools/build-plugin.ps1 -SelfContained
     ./tools/build-plugin.ps1 -GrtDir "C:\...\GordonsReloadingTool"
 #>
 param(
     [string]$Configuration = "Release",
-    [string]$GrtDir = ""
+    [string]$GrtDir = "",
+    [switch]$SelfContained
 )
 
 $ErrorActionPreference = "Stop"
@@ -74,7 +82,8 @@ function Stamp($manifest) {
     if ($got -ne $version) { throw "manifest version is '$got', expected '$version' - check the version attribute in ShotMarkerPlugin\plugin\com.grt.plugin.xml" }
 }
 
-Write-Host "==> publish: framework-dependent"
+$variant = if ($SelfContained) { "self-contained" } else { "framework-dependent" }
+Write-Host "==> publish: $variant"
 $publishDir = Join-Path $root "artifacts\publish"
 # Wiped rather than published over: publish adds and overwrites but never removes, so a Debug
 # run followed by a Release one leaves the Debug-only leftovers behind, and the copy below
@@ -82,7 +91,9 @@ $publishDir = Join-Path $root "artifacts\publish"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 # DebugType=none keeps the .pdb for every assembly out of a folder people download and unzip;
 # SatelliteResourceLanguages=en drops the per-language resource folders nothing here uses.
-& $dotnet publish $csproj -c $Configuration -r win-x64 --self-contained false `
+# Never trimmed, self-contained or not: trimming is unsupported for WinForms, and the
+# reflection GRT's plugin host uses is exactly what a trimmer cannot see.
+& $dotnet publish $csproj -c $Configuration -r win-x64 --self-contained $($SelfContained.IsPresent) `
     -p:PublishSingleFile=false -p:DebugType=none -p:SatelliteResourceLanguages=en `
     -o $publishDir | Out-Host
 # `& dotnet.exe` is a native command: $ErrorActionPreference = "Stop" does not see its exit code,
@@ -104,7 +115,7 @@ Copy-Item (Join-Path $root "ShotMarkerPlugin\plugin\com.grt.plugin.xml") $dist -
 Stamp (Join-Path $dist "com.grt.plugin.xml")
 Copy-Item (Join-Path $root "ShotMarkerPlugin\plugin\media") $dist -Recurse
 
-Write-Host "==> dist\ShotMarker $('{0:N0}' -f ((Get-ChildItem $dist -Recurse -File | Measure-Object Length -Sum).Sum/1KB)) KB"
+Write-Host "==> dist\ShotMarker ($variant) $('{0:N0}' -f ((Get-ChildItem $dist -Recurse -File | Measure-Object Length -Sum).Sum/1KB)) KB"
 
 if ($GrtDir -ne "") {
     # Guard against a mistyped -GrtDir scattering a plugin folder somewhere nobody will look for
