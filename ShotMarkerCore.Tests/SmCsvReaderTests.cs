@@ -103,6 +103,24 @@ public class SmCsvReaderTests
     }
 
     [Fact]
+    public void TheSecondTargetOfABlockIsTaggedAndTheBlocksOwnTargetIsNot()
+    {
+        // The "[R]" in the name is for the shooter to read; TargetTag is the same fact in a
+        // form the import window can act on, and that is what decides the tick. Asserted
+        // apart from the name because a tick-box must not depend on searching a display
+        // string for a bracket.
+        var strings = Read(out _);
+
+        Assert.Equal(new string?[]
+        {
+            null, "R",
+            null, "R",
+            null, "R",
+            null, null, null,
+        }, strings.Select(s => s.TargetTag));
+    }
+
+    [Fact]
     public void MultiTargetScoreColumnsAreAssignedToTheCorrectTarget()
     {
         // Guard against the R/unprefixed score columns being swapped: for each of the

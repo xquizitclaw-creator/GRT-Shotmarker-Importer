@@ -290,13 +290,17 @@ public static class SmCsvReader
                 // guessed true/false (task 9b).
                 shots.Add(new SmShot(shots.Count + 1, r.XMm, r.YMm, r.VelocityMps, r.Score, r.TempC, r.IsSighter, false, null));
 
-            string stringName = prefix == baseGroup ? name : $"{name} [{prefix}]";
+            // The suffix and the tag are the same fact twice: one for the shooter to read,
+            // one for the import window to act on.
+            bool secondTarget = prefix != baseGroup;
+            string stringName = secondTarget ? $"{name} [{prefix}]" : name;
             int scoreIdx = appearanceOrder.IndexOf(prefix);
             string? scoreText = scoreIdx >= 0 && scoreIdx < scores.Count ? scores[scoreIdx] : null;
 
             // Id is a placeholder here — Read()'s Flush() overwrites it with a counter that
             // runs over every emitted string in the whole file, not just this block's.
-            result.Add(new SmString("", stringName, ts, faceId, dist, unit, w, h, null, scoreText, shots, null));
+            result.Add(new SmString("", stringName, ts, faceId, dist, unit, w, h, null, scoreText,
+                                    shots, null, secondTarget ? prefix : null));
         }
         return result;
     }

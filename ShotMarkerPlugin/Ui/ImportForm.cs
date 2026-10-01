@@ -160,7 +160,13 @@ internal sealed class ImportForm : Form
         var ic = CultureInfo.CurrentCulture;
         foreach (SmString s in strings)
         {
-            int i = _grid.Rows.Add(true, s.Name, s.Timestamp.ToString("yyyy-MM-dd HH:mm"),
+            // Unticked when the string came off a second target sharing this frame's sensors
+            // — normally the next lane's shooter, not this one's. Unticked rather than
+            // dropped: a club setup where one shooter runs both targets is perfectly real, so
+            // the shooter gets to say. This matters more than a default usually does, because
+            // GRT has no way to delete an appendix tab once it is written: an unwanted string
+            // is not something the shooter can undo afterwards, only re-import without.
+            int i = _grid.Rows.Add(s.TargetTag is null, s.Name, s.Timestamp.ToString("yyyy-MM-dd HH:mm"),
                 $"{s.DistanceValue.ToString("0", ic)} {s.DistanceUnit}", s.FaceId, CountedText(s),
                 s.ScoreText ?? "",
                 MeanVelocityText(s, ic),
@@ -178,6 +184,11 @@ internal sealed class ImportForm : Form
         }
         _import.Enabled = _grid.Rows.Count > 0;
         Note($"{strings.Count} string(s) read from {Path.GetFileName(dlg.FileName)}");
+
+        int second = strings.Count(s => s.TargetTag is not null);
+        if (second > 0)
+            Note($"{second} string(s) came off a second target on the same sensor frame and are "
+               + "NOT ticked — they are usually the next lane's shooter. Tick any that are yours.");
         ShowPreview();
     }
 

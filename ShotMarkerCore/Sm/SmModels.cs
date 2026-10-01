@@ -56,12 +56,23 @@ public sealed record SmGroupStats(
     double? VelocityAvgMps, double? VelocitySdMps, double? VelocityEsMps);
 
 /// <summary>One shooting string, the same shape whether it came from a .tar or a .csv.</summary>
+/// <param name="TargetTag">The shot-id letter prefix that separated this string out of a CSV
+/// block carrying two interleaved targets ("R"), or null for the block's own unprefixed
+/// target. One ShotMarker sensor frame can watch the target beside it — at a match the
+/// targets sit a foot or so apart and the far sensors hear both — so a second prefix is
+/// another lane, which usually means another shooter. Null for everything read from a .tar,
+/// which carries one target per string.
+///
+/// <para>The fact, not the "[R]" in <see cref="Name"/>, which is only how this is shown.
+/// The import window reads this to decide what to tick, and a tick-box is not something to
+/// settle by searching a display string for a bracket.</para></param>
 public sealed record SmString(
     string Id, string Name, DateTimeOffset Timestamp,
     string FaceId, double DistanceValue, string DistanceUnit,
     double FrameWidthMm, double FrameHeightMm,
     double? BulletDiameterMm, string? ScoreText,
-    IReadOnlyList<SmShot> Shots, SmGroupStats? Stats)
+    IReadOnlyList<SmShot> Shots, SmGroupStats? Stats,
+    string? TargetTag = null)
 {
     private const double MetresPerYard = 0.9144;
 
