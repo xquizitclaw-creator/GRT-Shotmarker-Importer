@@ -98,9 +98,27 @@ internal sealed class ImportForm : Form
 
     private void BuildGrid()
     {
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "sel", HeaderText = "", Width = 30 });
+        // Frozen, so the one column the shooter acts on cannot scroll off the left edge while
+        // they are reading charges and velocities over on the right — which is exactly where it
+        // went, leaving a window with no visible ticks at all. Sized to its own checkbox rather
+        // than to a fixed 30px: the glyph grows with the display, and a column that does not
+        // grow with it clips the tick on a high-DPI screen.
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn
+        {
+            Name = "sel", HeaderText = "", Frozen = true,
+            AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
+        });
+
         foreach (string c in new[] { "String", "When", "Distance", "Face", "Shots", "Score", "Mean v", "SD", "ES" })
-            _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c, HeaderText = c, ReadOnly = true });
+            _grid.Columns.Add(new DataGridViewTextBoxColumn
+            {
+                Name = c, HeaderText = c, ReadOnly = true,
+                // The name carries the firing point — "M6 R1 TT11 [Left]" — and a name cut to
+                // "M6 R1 TT11 [Le…" hides the one word that says whose shots these are. Sized to
+                // the longest name it actually holds, at whatever font this machine uses.
+                AutoSizeMode = c == "String" ? DataGridViewAutoSizeColumnMode.AllCells
+                                             : DataGridViewAutoSizeColumnMode.NotSet,
+            });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Charge", HeaderText = "Charge (gr)" });
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.MultiSelect = false;
