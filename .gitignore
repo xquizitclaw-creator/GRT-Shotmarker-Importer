@@ -27,3 +27,9 @@ shotmarker-velocity-warning-report.md
 # software plus the installable tars. Same reasoning as the sources above — it is
 # ShotMarker's code and this repo is public, so it never gets committed. Ruling F31.
 smtest/
+
+# Screenshots kept for reference while working: the ShotMarker sensor-hub capture behind
+# the near-miss report, and a bodoodle chart-workbench page. The first is a photograph of
+# ShotMarker's own UI, the second carries a share token for someone else's service in its
+# filename, and this repo is public. Local only. Ruling F31.
+Screenshots/
