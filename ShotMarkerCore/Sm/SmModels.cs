@@ -12,10 +12,17 @@ namespace ShotMarker.Core.Sm;
 /// off_target_mode is "show" — which is why the decision here rests on the statistics
 /// functions rather than on what the screen does.) A `simulated` shot is deliberately NOT
 /// covered: ShotMarker's statistics count it, so this plugin counts it too.</param>
+/// <param name="IsExcludedByUser">The shooter struck this shot out in the import window. Never
+/// set by a reader — no export carries it, because it is a decision made here, after the
+/// export was written. Deliberately separate from <see cref="IsExcludedOnDevice"/>: what the
+/// device decided and what the shooter decided are different facts about the shot, and the
+/// note has to be able to report them apart. Like a device exclusion it keeps its real
+/// coordinates and is still plotted — struck out, not deleted — so the shooter can see what
+/// they excluded.</param>
 public sealed record SmShot(
     int Number, double XMm, double YMm, double? VelocityMps,
     string? Score, double? TempC, bool IsSighter, bool IsInvalid,
-    bool? InSelectedGroup, bool IsExcludedOnDevice = false)
+    bool? InSelectedGroup, bool IsExcludedOnDevice = false, bool IsExcludedByUser = false)
 {
     /// <summary>Shots GRT should exclude from group statistics: sighters, rejects, shots the
     /// device itself marks as not counting, and — when the source says so — shots ShotMarker
@@ -28,7 +35,8 @@ public sealed record SmShot(
     /// usually agree — but only when a group exists at all. With no group selected,
     /// <c>InSelectedGroup</c> is null for every shot, and relying on it alone imported a
     /// deliberately hidden cross-fire as an ordinary scoring hit.</summary>
-    public bool IsFlyer => IsSighter || IsInvalid || IsExcludedOnDevice || InSelectedGroup == false;
+    public bool IsFlyer => IsSighter || IsInvalid || IsExcludedOnDevice || IsExcludedByUser
+                           || InSelectedGroup == false;
 }
 
 /// <summary>ShotMarker's own computed statistics for a group, carried through unaltered

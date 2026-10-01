@@ -216,6 +216,17 @@ public static class GrtShotGroupWriter
             "sighter/invalid/excluded)",
         };
         if (s.ScoreText is { Length: > 0 }) lines.Add($"Score:      {s.ScoreText}");
+
+        // Kept off the "sighter/invalid/excluded" line above on purpose: that line counts what
+        // the DEVICE excluded, and a shot the shooter struck out in the import window is a
+        // different fact about the string. Folding the two together would make an exclusion
+        // the shooter made look like one ShotMarker made, which is exactly the distinction
+        // SmShot.IsExcludedByUser exists to preserve.
+        var struckOut = s.Shots.Where(sh => sh.IsExcludedByUser).Select(sh => sh.Number).ToList();
+        if (struckOut.Count > 0)
+            lines.Add($"Excluded on import: shot{(struckOut.Count > 1 ? "s" : "")} " +
+                      string.Join(", ", struckOut.Select(n => n.ToString(ic))));
+
         if (s.Stats is { } st)
         {
             lines.Add("");
@@ -224,7 +235,16 @@ public static class GrtShotGroupWriter
             // own analysis of this tab now agrees with these numbers rather than repeating a
             // different shot set's. What can still differ from "every record shot fired" is
             // stated below as a plain count, so an excluded shot is visible, not mysterious.
-            lines.Add("ShotMarker's own figures:");
+            //
+            // Striking a shot out changes the group GRT now holds, but it cannot change what
+            // the device measured — these numbers came off the ShotMarker and stand as its
+            // record. They are kept rather than recomputed (which would have this plugin claim
+            // an authority it does not have) or blanked (which would throw away a real
+            // measurement), and qualified instead, so the note never reads as if the device
+            // had measured the curated group.
+            lines.Add(struckOut.Count > 0
+                ? "ShotMarker's own figures, for the full string, before the exclusions above:"
+                : "ShotMarker's own figures:");
             if (s.Shots.Any(sh => sh.InSelectedGroup.HasValue))
             {
                 int inGroup = s.Shots.Count(sh => sh.InSelectedGroup == true);

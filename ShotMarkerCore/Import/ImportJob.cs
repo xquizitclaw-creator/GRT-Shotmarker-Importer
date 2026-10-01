@@ -30,7 +30,7 @@ public static class ImportJob
         {
             try
             {
-                TargetFace face = TargetFaceLibrary.Find(s.FaceId) ?? Fallback(s, log);
+                TargetFace face = ResolveFace(s, log);
                 RenderedTarget render = TargetRenderer.Render(s, face);
                 GrtShotGroupWriter.Add(doc, new ImportItem(s, render, charge), log);
             }
@@ -42,6 +42,13 @@ public static class ImportJob
 
         return GrtShotGroupWriter.Save(doc);
     }
+
+    /// <summary>The face this string will be drawn on, library entry or generated fallback.
+    /// Public because the import window previews the string before writing it, and a preview
+    /// drawn on a different face from the import is worse than no preview at all — it is a
+    /// picture of a target the shooter is not going to get.</summary>
+    public static TargetFace ResolveFace(SmString s, IList<string> log) =>
+        TargetFaceLibrary.Find(s.FaceId) ?? Fallback(s, log);
 
     private static TargetFace Fallback(SmString s, IList<string> log)
     {

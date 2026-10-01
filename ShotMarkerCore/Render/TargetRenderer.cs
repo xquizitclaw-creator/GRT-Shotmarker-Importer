@@ -192,9 +192,17 @@ public static class TargetRenderer
             // shot ShotMarker's own group left out (SmShot.InSelectedGroup == false), and
             // excluding a shot from the statistics is not a reason to draw it differently;
             // it still gets its numbered orange disc like every other record shot.
+            //
+            // A shot the SHOOTER struck out is the one exception, and for a reason that does
+            // not apply to any of the others: they did it themselves, in the import window,
+            // and the picture is the confirmation that it took. An exclusion the shooter
+            // cannot see is one they cannot check. Grey, so it reads as struck out against
+            // both the red and the orange, and still numbered, so they can see WHICH.
             using var fill = new SKPaint
             {
-                Color = sh.IsSighter ? new SKColor(0xD0, 0x30, 0x30) : new SKColor(0xF0, 0x70, 0x20),
+                Color = sh.IsExcludedByUser ? new SKColor(0x9A, 0x9A, 0x9A)
+                      : sh.IsSighter ? new SKColor(0xD0, 0x30, 0x30)
+                      : new SKColor(0xF0, 0x70, 0x20),
                 Style = SKPaintStyle.Fill, IsAntialias = true,
             };
             using var edge = new SKPaint
@@ -233,16 +241,16 @@ public static class TargetRenderer
         c.DrawRect(new SKRect(left, top, right, bottom), box);
 
         if (!drawText) return;
-        string stats = Stats(s, x1 - x0, y1 - y0);
+        string[] stats = Stats(s, x1 - x0, y1 - y0).Split('\n');
         using var text = new SKPaint
         {
             Color = new SKColor(0x20, 0x20, 0x20), IsAntialias = true, TextSize = 22,
             Typeface = RegularTypeface,
         };
         using var plate = new SKPaint { Color = new SKColor(0xFF, 0xFF, 0xFF, 0xE0), Style = SKPaintStyle.Fill };
-        float w = text.MeasureText(stats);
-        c.DrawRect(new SKRect(10, 10, 20 + w, 46), plate);
-        c.DrawText(stats, 15, 36, text);
+        float w = stats.Max(text.MeasureText);
+        c.DrawRect(new SKRect(10, 10, 20 + w, 46 + 26 * (stats.Length - 1)), plate);
+        for (int i = 0; i < stats.Length; i++) c.DrawText(stats[i], 15, 36 + 26 * i, text);
     }
 
     /// <summary>The bounding box of the shots the group box is drawn around, or null when the
@@ -275,6 +283,19 @@ public static class TargetRenderer
         if (s.Stats?.VelocityAvgMps is { } v) parts.Add($"v {v.ToString("0", ic)} m/s");
         if (s.Stats?.VelocitySdMps is { } sd) parts.Add($"sd {sd.ToString("0.0", ic)}");
         if (s.Stats?.VelocityEsMps is { } es) parts.Add($"es {es.ToString("0.0", ic)}");
-        return string.Join("  ", parts);
+        string banner = string.Join("  ", parts);
+
+        // w and h are measured off the shots actually drawn, so they already follow a
+        // strike-out. Everything else on the line came off the ShotMarker and describes the
+        // string it saw. Side by side with nothing said, that is two different shot sets on
+        // one line — the same defect the note's qualifier exists to prevent, except here it
+        // is painted into the picture that goes to GRT. A second line rather than a longer
+        // first one: the plate is sized by the text, and this one has to stay inside a
+        // picture whose width the face decides.
+        int struck = s.Shots.Count(sh => sh.IsExcludedByUser);
+        if (struck > 0 && s.Stats is not null)
+            banner += $"\n{struck} shot{(struck > 1 ? "s" : "")} excluded on import; "
+                    + "SM figures above are the full string";
+        return banner;
     }
 }
