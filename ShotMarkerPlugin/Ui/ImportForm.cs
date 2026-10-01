@@ -98,27 +98,19 @@ internal sealed class ImportForm : Form
 
     private void BuildGrid()
     {
+        // Every column sized to what it actually holds, header included. A fixed width is a
+        // guess about a font, and this window runs at whatever font and DPI the shooter's
+        // machine uses — at theirs the defaults cut names to "M6 R1 TT11 [Le…", hiding the one
+        // word that says whose shots those are, and dates to "2026-09-1…".
+        _grid.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+
         // Frozen, so the one column the shooter acts on cannot scroll off the left edge while
-        // they are reading charges and velocities over on the right — which is exactly where it
-        // went, leaving a window with no visible ticks at all. Sized to its own checkbox rather
-        // than to a fixed 30px: the glyph grows with the display, and a column that does not
-        // grow with it clips the tick on a high-DPI screen.
-        _grid.Columns.Add(new DataGridViewCheckBoxColumn
-        {
-            Name = "sel", HeaderText = "", Frozen = true,
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.AllCells,
-        });
+        // they read charges and velocities over on the right — which is where it went, leaving
+        // an import window showing no ticks at all.
+        _grid.Columns.Add(new DataGridViewCheckBoxColumn { Name = "sel", HeaderText = "", Frozen = true });
 
         foreach (string c in new[] { "String", "When", "Distance", "Face", "Shots", "Score", "Mean v", "SD", "ES" })
-            _grid.Columns.Add(new DataGridViewTextBoxColumn
-            {
-                Name = c, HeaderText = c, ReadOnly = true,
-                // The name carries the firing point — "M6 R1 TT11 [Left]" — and a name cut to
-                // "M6 R1 TT11 [Le…" hides the one word that says whose shots these are. Sized to
-                // the longest name it actually holds, at whatever font this machine uses.
-                AutoSizeMode = c == "String" ? DataGridViewAutoSizeColumnMode.AllCells
-                                             : DataGridViewAutoSizeColumnMode.NotSet,
-            });
+            _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = c, HeaderText = c, ReadOnly = true });
         _grid.Columns.Add(new DataGridViewTextBoxColumn { Name = "Charge", HeaderText = "Charge (gr)" });
         _grid.SelectionMode = DataGridViewSelectionMode.FullRowSelect;
         _grid.MultiSelect = false;
@@ -126,12 +118,18 @@ internal sealed class ImportForm : Form
 
     private void BuildShotGrid()
     {
-        _shots.Columns.Add(new DataGridViewCheckBoxColumn { Name = "keep", HeaderText = "", Width = 30 });
-        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "No", HeaderText = "#", ReadOnly = true, Width = 40 });
-        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Score", HeaderText = "Score", ReadOnly = true, Width = 55 });
-        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "V", HeaderText = "m/s", ReadOnly = true, Width = 70 });
-        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Pos", HeaderText = "x, y (mm)", ReadOnly = true, Width = 110 });
-        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Why", HeaderText = "Excluded", ReadOnly = true, Width = 130 });
+        // Sized to content for the same reason as the string grid: these widths were chosen
+        // against one font, and at the shooter's they cut "Score" to "Scc" and a velocity to
+        // "5…". The strike-out column is frozen so it stays reachable when the table is too
+        // wide for its panel.
+        _shots.AutoSizeColumnsMode = DataGridViewAutoSizeColumnsMode.AllCells;
+
+        _shots.Columns.Add(new DataGridViewCheckBoxColumn { Name = "keep", HeaderText = "", Frozen = true });
+        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "No", HeaderText = "#", ReadOnly = true });
+        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Score", HeaderText = "Score", ReadOnly = true });
+        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "V", HeaderText = "m/s", ReadOnly = true });
+        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Pos", HeaderText = "x, y (mm)", ReadOnly = true });
+        _shots.Columns.Add(new DataGridViewTextBoxColumn { Name = "Why", HeaderText = "Excluded", ReadOnly = true });
 
         // A checkbox cell does not raise CellValueChanged until the cell loses focus, which
         // would leave the picture disagreeing with the tick the shooter just made until they
