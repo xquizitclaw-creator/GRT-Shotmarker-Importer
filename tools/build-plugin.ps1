@@ -4,7 +4,7 @@
 
   Publishes the plugin and assembles the drop-in GRT plugin folder:
 
-    ./dist/ShotMarker/   framework-dependent by default — needs the .NET 8 Desktop Runtime on
+    ./dist/ShotMarker/   framework-dependent by default — needs the .NET 8 Runtime on
                          the GRT machine. With -SelfContained it carries its own copy of .NET
                          and needs nothing installed, at about fifteen times the size.
 
@@ -92,7 +92,7 @@ $publishDir = Join-Path $root "artifacts\publish"
 if (Test-Path $publishDir) { Remove-Item -Recurse -Force $publishDir }
 # DebugType=none keeps the .pdb for every assembly out of a folder people download and unzip;
 # SatelliteResourceLanguages=en drops the per-language resource folders nothing here uses.
-# Never trimmed, self-contained or not: trimming is unsupported for WinForms, and the
+# Never trimmed, self-contained or not: Avalonia's XAML loader uses reflection, and the
 # reflection GRT's plugin host uses is exactly what a trimmer cannot see.
 & $dotnet publish $csproj -c $Configuration -r win-x64 --self-contained $($SelfContained.IsPresent) `
     -p:PublishSingleFile=false -p:DebugType=none -p:SatelliteResourceLanguages=en `

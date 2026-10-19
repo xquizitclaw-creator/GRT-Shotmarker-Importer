@@ -4,10 +4,11 @@
   <plugin
     name           = "ShotMarker Import"
     id             = "com.grt.plugin.shotmarker"
-    version        = "0.1.0"
+    version        = "0.2.0"
     provider       = "community"
     description    = "Imports ShotMarker electronic-target exports (.tar and .csv). Each shooting string becomes a shot-group tab with the target face drawn to scale and every hit placed on it, plus a measurement of the shot velocities and a note carrying ShotMarker's own group statistics."
     launch-windows = "GRT_ShotMarker.exe"
+    launch-macos   = "GRT_ShotMarker"
     launch-type    = "onDemand"
     launch-args    = ""
     start-timeout  = "5.0"

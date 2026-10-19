@@ -4,6 +4,13 @@
 
 ## What's new
 
+### 0.2.0
+
+Window rebuilt in Avalonia; runs on macOS. The import window is the same — open an export, tick
+the strings, check each charge, strike out shots, import — but it is no longer a Windows-only
+WinForms window, so the plugin now runs in GRT on a Mac as well as on Windows. Linux comes later.
+The smaller Windows download now needs only the .NET 8 Runtime, not the Desktop Runtime.
+
 ### 0.1.2
 
 Fixes the shooting distance and the group scale on a GRT set to imperial units. GRT stores both
@@ -45,9 +52,9 @@ all of its size. If you are not sure what you have on the GRT machine, this is t
 
 ### The smaller download
 
-**{{SLIM_ZIP}}** ({{SLIM_MB}} MB) is the same plugin with the bundled copy of .NET left out: a
-dozen files instead of 250. It installs exactly the same way, and it needs the
-[.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) already installed —
+**{{SLIM_ZIP}}** ({{SLIM_MB}} MB) is the same plugin with the bundled copy of .NET left out: about
+40 files instead of 220. It installs exactly the same way, and it needs the
+[.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) already installed —
 without it, GRT lists the plugin but cannot start it.
 
 ## What it does

@@ -45,13 +45,12 @@ jobs:
       # Two downloads, one build each, from the same tagged commit.
       #
       # The self-contained zip is the one to hand a stranger: it needs nothing installed. It is
-      # also about 155 MB unpacked, almost all of which is .NET rather than this plugin — and 45 MB
-      # of that is WPF, a UI toolkit nothing here touches, which comes along because .NET ships
-      # WinForms and WPF as a single runtime pack with no supported way to take only one half.
-      # Trimming is not the answer: it is unsupported for WinForms, and GRT loads plugins by
-      # reflection, which is exactly what a trimmer cannot follow. So the slim zip is simply the
-      # same plugin without the bundled runtime — a dozen files — for the many GRT machines that
-      # already have the .NET 8 Desktop Runtime.
+      # also about 100 MB unpacked, almost all of which is .NET rather than this plugin. Trimming
+      # is not the answer: Avalonia's XAML loader and GRT's plugin host both use reflection, which
+      # is exactly what a trimmer cannot follow. So the slim zip is simply the same plugin without
+      # the bundled runtime — about 40 files, 26 MB, most of it Avalonia and Skia — for GRT
+      # machines that already have the .NET 8 Runtime. (WinForms until 0.2.0; the window is
+      # Avalonia now, so the runtime it needs is the plain one, not the Desktop Runtime.)
       #
       # Each is zipped from the parent so it unpacks as ShotMarker\, which is the folder name GRT
       # wants inside plugins\ — unzipping a bare pile of DLLs into plugins\ does not make a plugin.

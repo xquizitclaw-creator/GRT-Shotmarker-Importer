@@ -14,13 +14,16 @@ deviation and extreme spread.
 2. Unzip it, and put the `ShotMarker` folder inside GRT's `plugins` folder.
 3. Restart GRT. A **ShotMarker** button appears on the toolbar.
 
-Windows, 64-bit. Each release carries two zips of the same plugin, installed the same way:
+Windows (64-bit) and macOS (Apple silicon and Intel) since 0.2.0; Linux is not supported yet. On a
+Mac the plugin folder holds a `GRT_ShotMarker` executable in place of `GRT_ShotMarker.exe` and is
+always self-contained. For Windows each release carries two zips of the same plugin, installed the
+same way:
 
 - `GRT-ShotMarker-<version>-win-x64.zip` is self-contained — it brings its own copy of .NET and
   needs nothing installed. Nearly all of its size is that copy.
-- `GRT-ShotMarker-<version>-win-x64-needs-dotnet8.zip` leaves the runtime out, so it is a
-  fifteenth the size and needs the
-  [.NET 8 Desktop Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the GRT machine —
+- `GRT-ShotMarker-<version>-win-x64-needs-dotnet8.zip` leaves the runtime out, so it is about
+  a quarter the size and needs the
+  [.NET 8 Runtime](https://dotnet.microsoft.com/download/dotnet/8.0) on the GRT machine —
   without it GRT lists the plugin but cannot start it.
 
 A build you make yourself is the second kind unless you pass `-SelfContained`.
@@ -43,18 +46,21 @@ longer carries the `_shotmarker_<timestamp>` suffix.
 
 ## Build
 
-This repo is a normal .NET solution plus one packaging script:
+This repo is a normal .NET solution plus two packaging scripts:
 
 ```bash
-dotnet test ShotMarkerCore.Tests         # the core's tests; runs on any platform
-powershell -File tools/build-plugin.ps1  # assembles dist/ShotMarker; needs Windows + the .NET 8 SDK
+dotnet test                              # core + window tests; runs on any platform
+powershell -File tools/build-plugin.ps1  # assembles dist/ShotMarker for Windows
+tools/build-mac.sh all                   # dist/<rid>/ShotMarker for osx-arm64, osx-x64, win-x64
 ```
 
-Name the test project explicitly. A bare `dotnet test` builds the whole solution, which includes
-the `net8.0-windows` WinForms shell — that needs the Windows Desktop targeting pack, and on a
-.NET SDK that ships without it (Homebrew's `dotnet@8`, some distro packages) the build fails with
-`MSB4019` before any test runs. The core library and all its tests are plain `net8.0` and are
-green on macOS, Linux and Windows alike.
+Every project is plain `net8.0` since 0.2.0 — the window is [Avalonia](https://avaloniaui.net/),
+not WinForms — so the whole solution builds and tests on macOS, Linux and Windows alike. The
+window's tests (`ShotMarkerPlugin.Tests`) run it headless; nothing opens on screen.
+
+`tools/build-mac.sh` is the bash counterpart of `build-plugin.ps1`: it publishes one runtime
+(`osx-arm64` by default, or `osx-x64`, `win-x64`, `all`), self-contained unless
+`FRAMEWORK_DEPENDENT=1`, and lays it out as a plugin folder with the stamped manifest and icons.
 
 `tools/build-plugin.ps1` takes an optional `-GrtDir` to install straight into a GRT install's
 `plugins` folder, and `-SelfContained` to build the variant the releases ship:

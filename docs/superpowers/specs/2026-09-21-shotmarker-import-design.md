@@ -83,7 +83,8 @@ and tested on any machine; only the thin UI shell is Windows-bound.
 | Project | Target | Role |
 |---|---|---|
 | `ShotMarkerCore` | `net8.0` | Export readers, face model, renderer, GRT writer |
-| `ShotMarkerPlugin` | `net8.0-windows` | WinForms shell (`GRT_ShotMarker.exe`), picker grid, log pane |
+| `ShotMarkerPlugin` | `net8.0` | Avalonia shell (`GRT_ShotMarker[.exe]`), picker grid, log pane — WinForms until 0.2.0 |
+| `ShotMarkerPlugin.Tests` | `net8.0` | xUnit + Avalonia.Headless: view model and window smoke tests |
 | `ShotMarkerCore.Tests` | `net8.0` | xUnit |
 | `GrtPluginKit` | `net8.0` | Existing shared kit, consumed as a git submodule of `GRT-Reloading-Toolkit` |
 
