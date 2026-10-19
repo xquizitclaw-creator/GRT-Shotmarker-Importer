@@ -5,7 +5,8 @@
 #   tools/build-mac.sh                   osx-arm64, self-contained
 #   tools/build-mac.sh osx-x64           Intel Mac
 #   tools/build-mac.sh win-x64           Windows, cross-published from the Mac
-#   tools/build-mac.sh all               osx-arm64, osx-x64 and win-x64
+#   tools/build-mac.sh linux-x64         Linux (GRTMultiPlatform), cross-published from the Mac
+#   tools/build-mac.sh all               osx-arm64, osx-x64, win-x64 and linux-x64
 #   FRAMEWORK_DEPENDENT=1 tools/build-mac.sh win-x64
 #                                        leaves the runtime out (needs the .NET 8 Runtime)
 #
@@ -71,7 +72,7 @@ build() {
 
 target="${1:-osx-arm64}"
 if [[ "$target" == "all" ]]; then
-  for rid in osx-arm64 osx-x64 win-x64; do build "$rid"; done
+  for rid in osx-arm64 osx-x64 win-x64 linux-x64; do build "$rid"; done
 else
   build "$target"
 fi

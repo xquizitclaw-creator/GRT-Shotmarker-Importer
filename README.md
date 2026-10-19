@@ -14,9 +14,10 @@ deviation and extreme spread.
 2. Unzip it, and put the `ShotMarker` folder inside GRT's `plugins` folder.
 3. Restart GRT. A **ShotMarker** button appears on the toolbar.
 
-Windows (64-bit) and macOS (Apple silicon and Intel) since 0.2.0; Linux is not supported yet. On a
-Mac the plugin folder holds a `GRT_ShotMarker` executable in place of `GRT_ShotMarker.exe` and is
-always self-contained. For Windows each release carries two zips of the same plugin, installed the
+Windows (64-bit) and macOS (Apple silicon and Intel) since 0.2.0, and Linux (x64) with
+GRTMultiPlatform, which talks to plugins there through a socket file (`--ipcfile`). On a Mac or
+Linux the plugin folder holds a `GRT_ShotMarker` executable in place of `GRT_ShotMarker.exe` and is
+always self-contained (`tools/build-mac.sh linux-x64` builds the Linux one). For Windows each release carries two zips of the same plugin, installed the
 same way:
 
 - `GRT-ShotMarker-<version>-win-x64.zip` is self-contained — it brings its own copy of .NET and

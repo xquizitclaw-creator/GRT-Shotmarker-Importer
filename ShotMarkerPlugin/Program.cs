@@ -18,9 +18,9 @@ internal static class Program
         LaunchArgs launch = LaunchArgs.Parse(args);
 
         GrtClient? grt = null;
-        if (launch.ShouldConnect(OperatingSystem.IsLinux()))
+        if (launch.ShouldConnect)
         {
-            grt = new GrtClient(launch.Port);
+            grt = launch.IpcFile is { } file ? new GrtClient(file) : new GrtClient(launch.Port);
             try { grt.Connect(); } catch { /* GRT closed the socket; run file-only */ }
         }
 
