@@ -2,30 +2,35 @@
 
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
-    <TargetFramework>net8.0-windows</TargetFramework>
-    <UseWindowsForms>true</UseWindowsForms>
-    <!-- The standard, Microsoft-documented switch for compiling a net*.0-windows project on a
-         non-Windows machine: it suppresses NETSDK1100 ("this project cannot be built on the
-         current OS") so `dotnet build`/`dotnet test` of the whole solution can succeed on any
-         dev machine or CI runner whose SDK carries the Windows Desktop targeting pack (the
-         official installer does). It is compile-only and changes nothing about how the exe
-         behaves when actually run on Windows.
-
-         It does NOT help if that SDK component is missing outright rather than merely refusing
-         non-Windows targeting — confirmed against a Homebrew `dotnet@8` install, whose Sdks/
-         folder has no Microsoft.NET.Sdk.WindowsDesktop at all, so evaluating this project there
-         still fails (MSB4019, before NETSDK1100 would even get a chance to fire). -->
-    <EnableWindowsTargeting>true</EnableWindowsTargeting>
+    <!-- Plain net8.0 since 0.2.0: the window is Avalonia, so one build of the UI runs on Windows
+         and macOS, and the project compiles on any SDK — no Windows Desktop targeting pack. -->
+    <TargetFramework>net8.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
     <RootNamespace>ShotMarker.Plugin</RootNamespace>
+    <!-- GRT's manifest names this exe (launch-windows / launch-macos); it must not change. -->
     <AssemblyName>GRT_ShotMarker</AssemblyName>
     <Deterministic>true</Deterministic>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <BuiltInComInteropSupport>true</BuiltInComInteropSupport>
   </PropertyGroup>
 
   <ItemGroup>
+    <!-- The same Avalonia as GRTMultiPlatform, the host app. -->
+    <PackageReference Include="Avalonia" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
+    <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.2.1" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ShotMarkerCore\ShotMarkerCore.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ShotMarkerPlugin.Tests" />
   </ItemGroup>
 
   <ItemGroup>

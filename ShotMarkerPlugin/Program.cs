@@ -1,3 +1,4 @@
+using Avalonia;
 using GrtPluginKit.Ipc;
 using ShotMarker.Core.Import;
 using ShotMarker.Plugin.Ui;
@@ -14,23 +15,24 @@ internal static class Program
         if (args.Length >= 1 && args[0] == "--import")
             return ImportCli.Run(args.Skip(1).ToArray());
 
-        ApplicationConfiguration.Initialize();
-
-        int port = 0;
-        for (int i = 0; i + 1 < args.Length; i++)
-            if (args[i] == "--ipcport" && int.TryParse(args[i + 1], out int p)) port = p;
+        LaunchArgs launch = LaunchArgs.Parse(args);
 
         GrtClient? grt = null;
-        if (port > 0)
+        if (launch.ShouldConnect(OperatingSystem.IsLinux()))
         {
-            grt = new GrtClient(port);
+            grt = new GrtClient(launch.Port);
             try { grt.Connect(); } catch { /* GRT closed the socket; run file-only */ }
         }
 
-        using (var form = new ImportForm(grt))
-            Application.Run(form);
+        App.Grt = grt is null ? null : new GrtClientHost(grt);
+        int rc = BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
 
         grt?.Dispose();
-        return 0;
+        return rc;
     }
+
+    /// <summary>Also what the headless tests configure, so the window they build is themed the
+    /// same as the one a shooter sees.</summary>
+    public static AppBuilder BuildAvaloniaApp() =>
+        AppBuilder.Configure<App>().UsePlatformDetect().WithInterFont().LogToTrace();
 }

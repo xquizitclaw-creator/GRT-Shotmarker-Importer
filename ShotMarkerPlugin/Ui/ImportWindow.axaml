@@ -1,0 +1,109 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:ui="clr-namespace:ShotMarker.Plugin.Ui"
+        x:Class="ShotMarker.Plugin.Ui.ImportWindow"
+        x:DataType="ui:ImportViewModel"
+        Title="ShotMarker import"
+        Width="1240" Height="760"
+        WindowStartupLocation="CenterScreen">
+
+  <!-- Same layout as the 0.1 window: buttons across the top, the string list on the left, the
+       preview (caption, target picture, shot table) on the right, the log along the bottom.
+       The splitters start where the old ones did: 540 px for the upper half, 560 px for the
+       list, 330 px for the picture. -->
+  <DockPanel>
+    <WrapPanel DockPanel.Dock="Top" Margin="6,6,6,4">
+      <Button x:Name="BrowseButton" Content="Open export…" Margin="0,0,6,0"
+              IsEnabled="{Binding BrowseEnabled}" Click="OnBrowse" />
+      <Button x:Name="ImportButton" Content="Import selected" Margin="0,0,6,0"
+              IsEnabled="{Binding ImportEnabled}" Click="OnImport" />
+      <!-- The label and its list show and hide as one. -->
+      <StackPanel x:Name="PointBox" Orientation="Horizontal" IsVisible="{Binding PointsVisible}"
+                  Margin="6,0,6,0">
+        <TextBlock Text="I shot from:" VerticalAlignment="Center" Margin="6,0,4,0" />
+        <ComboBox x:Name="PointList" ItemsSource="{Binding Points}"
+                  SelectedItem="{Binding SelectedPoint}" MinWidth="90">
+          <ComboBox.ItemTemplate>
+            <DataTemplate x:DataType="ui:PointItem">
+              <TextBlock Text="{Binding Text}" />
+            </DataTemplate>
+          </ComboBox.ItemTemplate>
+        </ComboBox>
+      </StackPanel>
+      <TextBlock x:Name="LoadLabel" Text="{Binding LoadText}" VerticalAlignment="Center" Margin="6,0,0,0" />
+    </WrapPanel>
+
+    <Grid RowDefinitions="540,4,*">
+      <Grid Grid.Row="0" ColumnDefinitions="560,4,*">
+        <!-- Columns size to what they hold, header included; the tick column is frozen so the
+             one column the shooter acts on cannot scroll off the left edge. -->
+        <DataGrid x:Name="StringGrid" Grid.Column="0"
+                  ItemsSource="{Binding Rows}" SelectedItem="{Binding SelectedRow}"
+                  SelectionMode="Single" FrozenColumnCount="1"
+                  CanUserReorderColumns="False" CanUserResizeColumns="True" CanUserSortColumns="True"
+                  GridLinesVisibility="All" HeadersVisibility="Column"
+                  BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+          <DataGrid.Columns>
+            <DataGridTemplateColumn Header="" CanUserSort="False" CanUserResize="False">
+              <DataGridTemplateColumn.CellTemplate>
+                <DataTemplate x:DataType="ui:StringRow">
+                  <CheckBox IsChecked="{Binding Selected}" HorizontalAlignment="Center" Margin="6,0,0,0" />
+                </DataTemplate>
+              </DataGridTemplateColumn.CellTemplate>
+            </DataGridTemplateColumn>
+            <DataGridTextColumn Header="String" Binding="{Binding Name}" IsReadOnly="True" />
+            <DataGridTextColumn Header="When" Binding="{Binding When}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Distance" Binding="{Binding Distance}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Face" Binding="{Binding Face}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Shots" Binding="{Binding Shots}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Score" Binding="{Binding Score}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Mean v" Binding="{Binding MeanV}" IsReadOnly="True" />
+            <DataGridTextColumn Header="SD" Binding="{Binding Sd}" IsReadOnly="True" />
+            <DataGridTextColumn Header="ES" Binding="{Binding Es}" IsReadOnly="True" />
+            <DataGridTextColumn Header="Charge (gr)" Binding="{Binding Charge}" />
+          </DataGrid.Columns>
+        </DataGrid>
+
+        <GridSplitter Grid.Column="1" ResizeDirection="Columns" />
+
+        <DockPanel Grid.Column="2">
+          <TextBlock x:Name="CaptionText" DockPanel.Dock="Top" Text="{Binding Caption}"
+                     TextWrapping="Wrap" Height="34" Margin="4,2,4,2" />
+          <Grid RowDefinitions="330,4,*">
+            <Border Grid.Row="0" Background="White">
+              <Image x:Name="FaceImage" Stretch="Uniform" />
+            </Border>
+            <GridSplitter Grid.Row="1" ResizeDirection="Rows" />
+            <DataGrid x:Name="ShotGrid" Grid.Row="2"
+                      ItemsSource="{Binding Shots}" FrozenColumnCount="1"
+                      CanUserReorderColumns="False" CanUserSortColumns="True"
+                      GridLinesVisibility="All" HeadersVisibility="Column" IsReadOnly="True"
+                      BorderThickness="1" BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}">
+              <DataGrid.Columns>
+                <DataGridTemplateColumn Header="" CanUserSort="False" CanUserResize="False">
+                  <DataGridTemplateColumn.CellTemplate>
+                    <DataTemplate x:DataType="ui:ShotRow">
+                      <CheckBox IsChecked="{Binding Keep}" IsEnabled="{Binding CanChange}"
+                                HorizontalAlignment="Center" Margin="6,0,0,0" />
+                    </DataTemplate>
+                  </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
+                <DataGridTextColumn Header="#" Binding="{Binding No}" />
+                <DataGridTextColumn Header="Score" Binding="{Binding Score}" />
+                <DataGridTextColumn Header="m/s" Binding="{Binding V}" />
+                <DataGridTextColumn Header="x, y (mm)" Binding="{Binding Pos}" />
+                <DataGridTextColumn Header="Excluded" Binding="{Binding Why}" />
+              </DataGrid.Columns>
+            </DataGrid>
+          </Grid>
+        </DockPanel>
+      </Grid>
+
+      <GridSplitter Grid.Row="1" ResizeDirection="Rows" />
+
+      <TextBox x:Name="LogBox" Grid.Row="2" Text="{Binding Log}" IsReadOnly="True"
+               AcceptsReturn="True" TextWrapping="Wrap"
+               ScrollViewer.VerticalScrollBarVisibility="Auto" />
+    </Grid>
+  </DockPanel>
+</Window>

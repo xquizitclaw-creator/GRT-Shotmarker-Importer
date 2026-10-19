@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShotMarkerCore.Tests", "Sho
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShotMarkerPlugin", "ShotMarkerPlugin\ShotMarkerPlugin.csproj", "{5CA9EA7E-44E7-43CB-8B09-6BF54316ED14}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "ShotMarkerPlugin.Tests", "ShotMarkerPlugin.Tests\ShotMarkerPlugin.Tests.csproj", "{69070EF4-372F-4228-AEA7-3D7CA352EA4D}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -30,5 +32,9 @@ Global
 		{5CA9EA7E-44E7-43CB-8B09-6BF54316ED14}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5CA9EA7E-44E7-43CB-8B09-6BF54316ED14}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5CA9EA7E-44E7-43CB-8B09-6BF54316ED14}.Release|Any CPU.Build.0 = Release|Any CPU
+		{69070EF4-372F-4228-AEA7-3D7CA352EA4D}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{69070EF4-372F-4228-AEA7-3D7CA352EA4D}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{69070EF4-372F-4228-AEA7-3D7CA352EA4D}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{69070EF4-372F-4228-AEA7-3D7CA352EA4D}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 EndGlobal
