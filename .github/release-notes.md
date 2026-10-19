@@ -8,7 +8,9 @@
 
 Window rebuilt in Avalonia; runs on macOS. The import window is the same — open an export, tick
 the strings, check each charge, strike out shots, import — but it is no longer a Windows-only
-WinForms window, so the plugin now runs in GRT on a Mac as well as on Windows. Linux comes later.
+WinForms window, so the plugin now runs in GRT on a Mac as well as on Windows. On Linux (x64) it
+runs in GRTMultiPlatform, which starts plugins there through a socket file; GRT itself has no Linux
+version, and the downloads below are for Windows.
 The smaller Windows download now needs only the .NET 8 Runtime, not the Desktop Runtime.
 
 ### 0.1.2
