@@ -37,3 +37,6 @@ Screenshots/
 # Drafts kept beside the project while working - the Discord announcement text, notes to
 # myself. Not part of the plugin and not something a public repo needs; local only.
 scratchpad/
+
+# git worktrees for side branches, kept inside the repo folder.
+.worktrees/
