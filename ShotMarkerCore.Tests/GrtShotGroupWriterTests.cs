@@ -106,6 +106,27 @@ public class GrtShotGroupWriterTests
     }
 
     /// <summary>
+    /// An imported tab shows the picture undarkened: "Darken image" starts at 0 % (#99,
+    /// reported by Charlie).
+    /// </summary>
+    [Fact]
+    public void AnImportedTabIsNotDarkened()
+    {
+        var doc = NewDoc();
+        GrtShotGroupWriter.Add(doc, Item(), new List<string>());
+        string path = Path.Combine(Path.GetTempPath(), Path.GetRandomFileName() + ".grtload");
+        try
+        {
+            doc.Save(path);
+            var xml = new System.Xml.XmlDocument();
+            xml.Load(path);
+            var sg = (System.Xml.XmlElement)xml.SelectSingleNode("//ShotGroup")!;
+            Assert.Equal("0", sg.GetAttribute("darkenImageAlpha"));
+        }
+        finally { File.Delete(path); }
+    }
+
+    /// <summary>
     /// Generated loads use the plugin's own sibling family. The toolkit prunes the "toolkit"
     /// family to its three newest, so sharing it would let the toolkit delete this plugin's
     /// output (and the other way round).
